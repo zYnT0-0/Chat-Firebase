@@ -159,10 +159,10 @@
     <!-- FIREBASE SDKs (Usando Módulos Modernos para Firestore) -->
     <script type="module">
         // Importações necessárias para Firebase e Firestore
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
         // Ativar log de debug (opcional, mas útil)
         setLogLevel('Debug');
@@ -170,6 +170,7 @@
         // ====================================================================
         // 1. VARIÁVEIS DE AMBIENTE E INICIALIZAÇÃO
         // ====================================================================
+        // O Canvas fornece as configurações necessárias através destas variáveis globais
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -220,14 +221,14 @@
         async function initializeFirebase() {
             try {
                 if (Object.keys(firebaseConfig).length === 0) {
-                    throw new Error("Configuração do Firebase não encontrada.");
+                    throw new Error("Configuração do Firebase não encontrada. O Canvas não forneceu as variáveis.");
                 }
 
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
 
-                // Tenta autenticar
+                // Tenta autenticar usando o token fornecido ou anonimamente
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -256,7 +257,7 @@
             } catch (e) {
                 console.error("Erro na inicialização do Firebase:", e);
                 statusDiv.textContent = `ERRO: Não foi possível conectar ao Firebase. Verifique o console.`;
-                customAlert(`Erro: ${e.message}. O chat não está funcional. Verifique a configuração do Firebase.`);
+                customAlert(`Erro: ${e.message}. O chat não está funcional. Verifique o console.`);
             }
         }
 
@@ -265,15 +266,22 @@
         // ====================================================================
 
         // Função para renderizar uma mensagem no DOM
-        function renderMessage(doc, isInitialLoad) {
+        function renderMessage(doc) {
             const data = doc.data();
             const messageId = doc.id;
             const isMine = data.userId === currentUserId;
             
-            // Cria o elemento da mensagem
-            const messageElement = document.createElement('div');
+            // Cria ou atualiza o elemento da mensagem
+            let messageElement = document.getElementById(`msg-${messageId}`);
+            const isNew = !messageElement;
+
+            if (isNew) {
+                messageElement = document.createElement('div');
+                messageElement.id = `msg-${messageId}`;
+            }
+
+            // Garante que a classe e a direção estejam corretas
             messageElement.className = `message ${isMine ? 'my-message ml-auto' : 'other-message mr-auto'}`;
-            messageElement.id = `msg-${messageId}`;
 
             const usernameDisplay = isMine ? 'Você' : (data.username || 'Anônimo');
 
@@ -283,16 +291,12 @@
                 <div class="message-timestamp">${formatTimestamp(data.timestamp)}</div>
             `;
             
-            // Adiciona ou atualiza a mensagem
-            const existing = document.getElementById(`msg-${messageId}`);
-            if (existing) {
-                messagesDiv.replaceChild(messageElement, existing);
-            } else {
+            if (isNew) {
                 messagesDiv.appendChild(messageElement);
             }
 
-            // Rola para o final apenas se for uma nova mensagem ou carregamento inicial
-            if (!existing && !isInitialLoad) {
+            // Rola para o final se for uma nova mensagem
+            if (isNew) {
                 scrollToBottom();
             }
         }
@@ -301,44 +305,34 @@
         function setupMessageListener() {
             if (!isAuthReady || !db) return;
 
+            // Caminho para a coleção pública (necessário para chat multi-usuário)
             const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
-            const q = query(collection(db, messagesCollectionPath));
+            
+            // Cria a query: ordena por timestamp para garantir a ordem correta
+            // NOTA: 'orderBy' pode exigir a criação de um índice no Firebase, mas
+            // para o campo 'timestamp' ele geralmente funciona por padrão.
+            const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
             
             // onSnapshot é o listener em tempo real
             onSnapshot(q, (snapshot) => {
-                let hasNewMessage = false;
                 
                 snapshot.docChanges().forEach((change) => {
                     const doc = change.doc;
-                    // Se for um novo documento adicionado, renderiza e marca para rolagem
-                    if (change.type === "added") {
-                        renderMessage(doc, true); // Renderiza mensagens iniciais
-                        hasNewMessage = true;
+                    
+                    if (change.type === "added" || change.type === "modified") {
+                        renderMessage(doc); 
                     }
-                    // Se for um documento modificado (ex: edição), atualiza
-                    if (change.type === "modified") {
-                         renderMessage(doc, false);
-                    }
-                    // Se for um documento removido, remove do DOM
+                    
+                    // Se for um documento removido (moderação/exclusão)
                     if (change.type === "removed") {
                         const existing = document.getElementById(`msg-${doc.id}`);
                         if (existing) existing.remove();
                     }
                 });
-
-                // Após processar todas as mudanças, rola para o final se houver novas mensagens
-                if (hasNewMessage) {
-                    scrollToBottom();
-                }
                 
-                // Rola para o final após o carregamento inicial completo
-                if (snapshot.size > 0 && messagesDiv.childElementCount === snapshot.size) {
-                    scrollToBottom();
-                }
-
             }, (error) => {
                 console.error("Erro no listener do Firestore: ", error);
-                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real.';
+                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. Verifique o console.';
             });
         }
 
@@ -380,7 +374,7 @@
                 messageInput.value = ''; // Limpa o input
             } catch (e) {
                 console.error("Erro ao enviar mensagem: ", e);
-                customAlert('Erro ao enviar. Tente novamente.');
+                customAlert('Erro ao enviar. Verifique o console para detalhes.');
             }
         });
 
