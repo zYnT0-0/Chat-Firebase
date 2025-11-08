@@ -179,7 +179,6 @@
             storageBucket: "chat-firebase-efcbe.firebasestorage.app",
             messagingSenderId: "376919463932",
             appId: "1:376919463932:web:4b2139df551d0a026ac479"
-            // databaseURL e measurementId não são essenciais para a inicialização do Auth/Firestore
         };
 
         // Variáveis de ambiente fornecidas pelo Canvas (necessárias para o path do Firestore e Auth Token)
@@ -236,12 +235,27 @@
                 db = getFirestore(app);
                 auth = getAuth(app);
                 
-                // Tenta autenticar usando o token fornecido pelo ambiente
-                if (initialAuthToken) {
-                    await signInWithCustomToken(auth, initialAuthToken);
-                } else {
-                    await signInAnonymously(auth);
+                // Tenta autenticar usando o token fornecido, com fallback para anônimo se falhar.
+                try {
+                    if (initialAuthToken) {
+                        // Tenta a forma de autenticação preferida (token customizado)
+                        await signInWithCustomToken(auth, initialAuthToken);
+                        console.log("Autenticação com token customizado tentada.");
+                    } else {
+                        // Se não houver token, usa autenticação anônima
+                        await signInAnonymously(auth);
+                        console.log("Autenticação anônima tentada (sem token).");
+                    }
+                } catch (e) {
+                    // Se a autenticação com token falhar (como com auth/admin-restricted-operation), tenta o login anônimo.
+                    console.warn(`Erro ao tentar autenticação principal (${e.code || e.message}): Tentando signInAnonymously como fallback.`);
+                    // Verifica se já não houve um usuário logado (pode acontecer se o erro for após o sucesso)
+                    if (!auth.currentUser) {
+                        await signInAnonymously(auth);
+                        console.log("Fallback para autenticação anônima bem-sucedido.");
+                    }
                 }
+
 
                 // Listener para garantir que a autenticação esteja completa
                 onAuthStateChanged(auth, (user) => {
@@ -249,7 +263,7 @@
                         currentUserId = user.uid;
                         isAuthReady = true;
                         // Exibe o ID do usuário (parcialmente) conforme regra
-                        statusDiv.textContent = `Logado: ${currentUserId.substring(0, 8)}... | Chat Público`;
+                        statusDiv.textContent = `Logado (ID: ${currentUserId.substring(0, 8)}...) | Chat Público`;
                         
                         // Carrega o último nome de usuário salvo ou usa um padrão
                         const savedUsername = localStorage.getItem('chatUsername');
@@ -318,6 +332,9 @@
             const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
             
             // Cria a query: ordena por timestamp para garantir a ordem correta
+            // Nota: Para evitar erros de "índice faltando" no Firestore, a ordenação é feita aqui.
+            // Se as mensagens estiverem sempre ordenadas corretamente (como ao usar serverTimestamp), 
+            // a ordenação por JS é mais segura do que forçar um índice composto.
             const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
             
             // onSnapshot é o listener em tempo real
