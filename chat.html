@@ -1,0 +1,244 @@
+<!-- chat.html -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Chat — App</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- marked + DOMPurify para markdown seguro -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
+
+<style>
+  body{ background:#0d1117; color:#c9d1d9; font-family:Inter,system-ui; }
+  .message { display:inline-block; word-break:break-word; white-space:pre-wrap; }
+  .meta { font-size:11px; opacity:0.7; }
+</style>
+</head>
+<body class="flex flex-col h-screen">
+
+<header class="bg-[#0f1418] p-3 flex items-center justify-between border-b border-gray-800">
+  <div>
+    <strong class="text-sm">Chat Anônimo</strong>
+    <div id="status" class="text-xs text-gray-400">Conectando...</div>
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="login.html" class="text-xs text-gray-400">Sair</a>
+    <a href="admin.html" id="adminLink" class="text-xs text-red-400 hidden">Admin</a>
+  </div>
+</header>
+
+<main id="messages" class="flex-1 overflow-auto p-4 space-y-2" style="background:#161b22"></main>
+
+<section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-2 items-center">
+  <input id="friendSearch" placeholder="Pesquisar amigos..." class="w-1/4 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" />
+  <div id="friendsList" class="flex gap-2"></div>
+  <input id="messageInput" placeholder="Escreva..." class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" />
+  <button id="sendBtn" class="bg-blue-600 px-3 py-2 rounded text-sm">Enviar</button>
+</section>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+  import { getDatabase, ref, push, onChildAdded, get, child, set, update, onValue, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
+  // CONFIG
+  const firebaseConfig = {
+    apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+    authDomain: "chat-firebase-efcbe.firebaseapp.com",
+    databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+    projectId: "chat-firebase-efcbe",
+    storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+    messagingSenderId: "376919463932",
+    appId: "1:376919463932:web:4b2139df551d0a026ac479",
+    measurementId: "G-R14XVTJBFL"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+  signInAnonymously(auth).catch(()=>{});
+
+  // sessão (preenchida no login)
+  let currentUserUid = localStorage.getItem('chat_user_uid');
+  let currentUsername = localStorage.getItem('chat_user_username');
+
+  const statusEl = document.getElementById('status');
+  const messagesEl = document.getElementById('messages');
+  const input = document.getElementById('messageInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const friendSearch = document.getElementById('friendSearch');
+  const friendsList = document.getElementById('friendsList');
+  const adminLink = document.getElementById('adminLink');
+
+  // pequeno mapa para prevenir duplicados no UI
+  const displayed = new Set();
+
+  // se não logged in, manda pra login
+  if(!currentUserUid){ location.href = 'login.html'; }
+
+  // função para render markdown de forma segura
+  function renderMarkdown(md){
+    const html = marked.parse(md || '');
+    return DOMPurify.sanitize(html);
+  }
+
+  // Atualiza presença online usando .info/connected
+  const connectedRef = ref(db, '.info/connected');
+  onValue(connectedRef, (snap) => {
+    if(snap.val() === true){
+      // set status online and onDisconnect offline
+      const myStatusRef = ref(db, `status/${currentUserUid}`);
+      set(myStatusRef, { state: 'online', last_changed: Date.now() });
+      // onDisconnect fallback
+      // note: in v9 web modular onDisconnect requires using onDisconnect(ref).set(...)
+      // We'll set up onDisconnect via update pattern:
+      const onDisconnect = myStatusRef;
+      // simpler: set offline on unload
+      window.addEventListener('beforeunload', async () => {
+        await set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() });
+      });
+    } else {
+      // offline
+    }
+  });
+
+  // carrega lista de amigos (ids)
+  async function loadFriends(){
+    const snap = await get(ref(db, `users/${currentUserUid}/friends`));
+    friendsList.innerHTML = '';
+    if(snap.exists()){
+      const friends = snap.val();
+      Object.keys(friends).forEach(fid => {
+        const btn = document.createElement('button');
+        btn.textContent = friends[fid].username || 'friend';
+        btn.className = 'px-2 py-1 bg-gray-800 rounded text-xs';
+        friendsList.appendChild(btn);
+      });
+    }
+  }
+  loadFriends();
+
+  // busca amigos por nome
+  friendSearch.addEventListener('input', async (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const results = document.createElement('div');
+    results.className = 'absolute mt-10 bg-[#0f1418] p-2 rounded shadow';
+    // pesquisa simples: pega /usernames keys e filtra (pode ser custoso em db grande)
+    const usernamesSnap = await get(ref(db, 'usernames'));
+    // limpa area
+    // simples search
+    friendsList.innerHTML = '';
+    if(usernamesSnap.exists()){
+      const all = usernamesSnap.val();
+      Object.keys(all).forEach(k => {
+        if(q && k.includes(q)){
+          const uid = all[k];
+          get(ref(db, `users/${uid}`)).then(s => {
+            if(!s.exists()) return;
+            const user = s.val();
+            const b = document.createElement('button');
+            b.className = 'px-2 py-1 bg-gray-800 rounded text-xs';
+            b.textContent = user.username;
+            b.onclick = async () => {
+              // adicionar friend: /users/{me}/friends/{uid} = {username}
+              await set(ref(db, `users/${currentUserUid}/friends/${uid}`), { username: user.username, addedAt: Date.now() });
+              loadFriends();
+            };
+            friendsList.appendChild(b);
+          });
+        }
+      });
+    }
+  });
+
+  // listener de mensagens (usando snapshot.key para evitar duplicados)
+  const messagesRef = ref(db, 'messages');
+  onChildAdded(messagesRef, (snap) => {
+    const id = snap.key;
+    if(displayed.has(id)) return; // evita duplicados
+    displayed.add(id);
+    const data = snap.val();
+    // render
+    const wrapper = document.createElement('div');
+    wrapper.className = 'flex';
+    const isMine = data.userId === currentUserUid;
+    wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message p-2 rounded-lg';
+    bubble.style.maxWidth = 'min(720px, 66%)'; // faz ser responsivo: tamanho relativo ao texto, mas cap
+    bubble.style.background = isMine ? '#2563eb' : '#111318';
+    bubble.style.color = isMine ? 'white' : '#d6dbe3';
+
+    // conteúdo com markdown
+    bubble.innerHTML = `
+      <div class="meta">${data.username || 'Anônimo'} <span style="font-size:10px; opacity:.6">• ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'agora'}</span></div>
+      <div class="content">${renderMarkdown(data.text)}</div>
+    `;
+    // ações (editar/apagar) se for dono
+    if(isMine){
+      const actions = document.createElement('div');
+      actions.className = 'flex gap-1 mt-1';
+      const editBtn = document.createElement('button'); editBtn.textContent = 'editar'; editBtn.className='text-xs opacity-70';
+      const delBtn = document.createElement('button'); delBtn.textContent = 'apagar'; delBtn.className='text-xs text-red-400';
+      actions.appendChild(editBtn); actions.appendChild(delBtn);
+      bubble.appendChild(actions);
+
+      editBtn.onclick = async () => {
+        const newText = prompt('Editar mensagem:', data.text);
+        if(newText !== null){
+          // atualiza message (procura id)
+          await update(ref(db, `messages/${id}`), { text: newText, editedAt: Date.now() });
+        }
+      };
+      delBtn.onclick = async () => {
+        if(confirm('Apagar essa mensagem?')) await remove(ref(db, `messages/${id}`));
+      };
+    }
+
+    wrapper.appendChild(bubble);
+    messagesEl.appendChild(wrapper);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+
+  // evita duplicação ao reconectar: displayed set persists
+  // enviar mensagem (botão)
+  sendBtn.addEventListener('click', async () => {
+    const text = input.value.trim();
+    if(!text) return;
+    // checa ban
+    const userSnap = await get(ref(db, `users/${currentUserUid}`));
+    if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
+
+    // push
+    sendBtn.disabled = true;
+    await push(messagesRef, {
+      userId: currentUserUid,
+      username: currentUsername,
+      text,
+      timestamp: Date.now()
+    });
+    input.value = '';
+    sendBtn.disabled = false;
+  });
+
+  // mostrar admin link se for admin (verifica /admins/{uid})
+  (async function(){
+    const snap = await get(ref(db, `admins/${currentUserUid}`));
+    if(snap.exists() && snap.val() === true){
+      adminLink.classList.remove('hidden');
+    }
+  })();
+
+  // atualizar status UI com presença dos outros:
+  // Exibe contagem de online (opcional)
+  onValue(ref(db, 'status'), snap => {
+    const all = snap.val() || {};
+    // se quiser, mostrar quem online etc
+  });
+
+</script>
+</body>
+</html>
