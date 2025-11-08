@@ -160,7 +160,7 @@
     <script type="module">
         // Importações necessárias para Firebase e Firestore
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInWithCustomToken, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
@@ -170,9 +170,19 @@
         // ====================================================================
         // 1. VARIÁVEIS DE AMBIENTE E INICIALIZAÇÃO
         // ====================================================================
-        // O Canvas fornece as configurações necessárias através destas variáveis globais
-        // Se __firebase_config estiver indefinido, ele será um objeto vazio {}.
-        let firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        // **CONFIGURAÇÃO HARDCODED** (Usando os valores fornecidos pelo usuário)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+            authDomain: "chat-firebase-efcbe.firebaseapp.com",
+            projectId: "chat-firebase-efcbe",
+            storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+            messagingSenderId: "376919463932",
+            appId: "1:376919463932:web:4b2139df551d0a026ac479"
+            // databaseURL e measurementId não são essenciais para a inicialização do Auth/Firestore
+        };
+
+        // Variáveis de ambiente fornecidas pelo Canvas (necessárias para o path do Firestore e Auth Token)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
@@ -221,27 +231,12 @@
 
         async function initializeFirebase() {
             try {
-                // VERIFICAÇÃO E FALLBACK DE CONFIGURAÇÃO CRÍTICA
-                if (Object.keys(firebaseConfig).length === 0 || !firebaseConfig.projectId) {
-                    console.warn("AVISO CRÍTICO: Configuração do Firebase não fornecida ou incompleta. Usando placeholders para evitar o erro 'projectId not provided'. O Firestore PODE FALHAR.");
-                    statusDiv.textContent = `AVISO: Configuração vazia. Tentando iniciar com placeholders (limitação do Canvas).`;
-                    
-                    // Injeta configuração mínima válida com placeholders
-                    firebaseConfig = {
-                        apiKey: "dummy-api-key",
-                        authDomain: "dummy-auth-domain",
-                        projectId: "dummy-project-id", 
-                        storageBucket: "dummy-bucket",
-                        messagingSenderId: "dummy-sender-id",
-                        appId: "dummy-app-id"
-                    };
-                }
-
+                
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
-
-                // Tenta autenticar usando o token fornecido ou anonimamente
+                
+                // Tenta autenticar usando o token fornecido pelo ambiente
                 if (initialAuthToken) {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } else {
@@ -253,7 +248,8 @@
                     if (user) {
                         currentUserId = user.uid;
                         isAuthReady = true;
-                        statusDiv.textContent = `Logado como Usuário ID: ${currentUserId.substring(0, 8)}... | Chat Público`;
+                        // Exibe o ID do usuário (parcialmente) conforme regra
+                        statusDiv.textContent = `Logado: ${currentUserId.substring(0, 8)}... | Chat Público`;
                         
                         // Carrega o último nome de usuário salvo ou usa um padrão
                         const savedUsername = localStorage.getItem('chatUsername');
@@ -263,13 +259,13 @@
                     } else {
                         currentUserId = null;
                         isAuthReady = false;
-                        statusDiv.textContent = 'Autenticação em progresso ou falhou.';
+                        statusDiv.textContent = 'Autenticação falhou ou em progresso.';
                     }
                 });
 
             } catch (e) {
                 console.error("Erro fatal na inicialização do Firebase:", e);
-                statusDiv.textContent = `ERRO FATAL: ${e.message}. O chat não está funcional.`;
+                statusDiv.textContent = `ERRO FATAL: ${e.code || e.message}. O chat não está funcional.`;
                 customAlert(`Erro fatal: ${e.message}. O chat não está funcional. Verifique o console.`);
             }
         }
@@ -310,7 +306,7 @@
 
             // Rola para o final se for uma nova mensagem
             if (isNew) {
-                messagesDiv.scroll({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
+                scrollToBottom();
             }
         }
 
@@ -318,11 +314,10 @@
         function setupMessageListener() {
             if (!isAuthReady || !db) return;
 
-            // Caminho para a coleção pública (necessário para chat multi-usuário)
+            // Caminho para a coleção pública (MANDATORY path for multi-user apps)
             const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
             
             // Cria a query: ordena por timestamp para garantir a ordem correta
-            // ATENÇÃO: Se o fallback de projectId for usado, esta query falhará no servidor Firebase real.
             const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
             
             // onSnapshot é o listener em tempo real
@@ -335,7 +330,7 @@
                         renderMessage(doc); 
                     }
                     
-                    // Se for um documento removido (moderação/exclusão)
+                    // Se for um documento removido
                     if (change.type === "removed") {
                         const existing = document.getElementById(`msg-${doc.id}`);
                         if (existing) existing.remove();
@@ -344,8 +339,8 @@
                 
             }, (error) => {
                 console.error("Erro no listener do Firestore: ", error);
-                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. (Se a config. estava vazia, isto é esperado).';
-                customAlert(`Erro ao carregar mensagens: ${error.message}. O chat não está sincronizado.`);
+                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. Verifique as regras de segurança do Firestore.';
+                customAlert(`Erro ao carregar mensagens: ${error.message}.`);
             });
         }
 
@@ -387,7 +382,7 @@
                 messageInput.value = ''; // Limpa o input
             } catch (e) {
                 console.error("Erro ao enviar mensagem: ", e);
-                customAlert('Erro ao enviar. Se você viu o aviso de "Configuração vazia", este erro é esperado. O chat não está funcional.');
+                customAlert('Erro ao enviar mensagem. Por favor, verifique as regras de segurança do seu Firestore.');
             }
         });
 
