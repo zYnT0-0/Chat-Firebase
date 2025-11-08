@@ -172,7 +172,7 @@
         // ====================================================================
         // O Canvas fornece as configurações necessárias através destas variáveis globais
         // Se __firebase_config estiver indefinido, ele será um objeto vazio {}.
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        let firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
@@ -221,10 +221,20 @@
 
         async function initializeFirebase() {
             try {
-                // Removemos o throw new Error aqui. Apenas avisamos e tentamos a inicialização.
-                if (Object.keys(firebaseConfig).length === 0) {
-                    console.warn("AVISO: Variável __firebase_config não fornecida pelo ambiente (ou está vazia). Tentando inicializar, mas o Firestore pode falhar.");
-                    statusDiv.textContent = `AVISO: Configuração do Firebase vazia. Tentando iniciar de forma limitada.`;
+                // VERIFICAÇÃO E FALLBACK DE CONFIGURAÇÃO CRÍTICA
+                if (Object.keys(firebaseConfig).length === 0 || !firebaseConfig.projectId) {
+                    console.warn("AVISO CRÍTICO: Configuração do Firebase não fornecida ou incompleta. Usando placeholders para evitar o erro 'projectId not provided'. O Firestore PODE FALHAR.");
+                    statusDiv.textContent = `AVISO: Configuração vazia. Tentando iniciar com placeholders (limitação do Canvas).`;
+                    
+                    // Injeta configuração mínima válida com placeholders
+                    firebaseConfig = {
+                        apiKey: "dummy-api-key",
+                        authDomain: "dummy-auth-domain",
+                        projectId: "dummy-project-id", 
+                        storageBucket: "dummy-bucket",
+                        messagingSenderId: "dummy-sender-id",
+                        appId: "dummy-app-id"
+                    };
                 }
 
                 app = initializeApp(firebaseConfig);
@@ -243,7 +253,7 @@
                     if (user) {
                         currentUserId = user.uid;
                         isAuthReady = true;
-                        statusDiv.textContent = `Logado como Usuário ID: ${currentUserId.substring(0, 8)}...`;
+                        statusDiv.textContent = `Logado como Usuário ID: ${currentUserId.substring(0, 8)}... | Chat Público`;
                         
                         // Carrega o último nome de usuário salvo ou usa um padrão
                         const savedUsername = localStorage.getItem('chatUsername');
@@ -253,10 +263,7 @@
                     } else {
                         currentUserId = null;
                         isAuthReady = false;
-                        // Mantenha o status de aviso se a configuração estiver vazia, caso contrário, falha na autenticação
-                        if (Object.keys(firebaseConfig).length !== 0) {
-                            statusDiv.textContent = 'Autenticação falhou. Tente novamente.';
-                        }
+                        statusDiv.textContent = 'Autenticação em progresso ou falhou.';
                     }
                 });
 
@@ -303,7 +310,7 @@
 
             // Rola para o final se for uma nova mensagem
             if (isNew) {
-                scrollToBottom();
+                messagesDiv.scroll({ top: messagesDiv.scrollHeight, behavior: 'smooth' });
             }
         }
 
@@ -315,6 +322,7 @@
             const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
             
             // Cria a query: ordena por timestamp para garantir a ordem correta
+            // ATENÇÃO: Se o fallback de projectId for usado, esta query falhará no servidor Firebase real.
             const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
             
             // onSnapshot é o listener em tempo real
@@ -336,8 +344,8 @@
                 
             }, (error) => {
                 console.error("Erro no listener do Firestore: ", error);
-                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. Verifique o console.';
-                customAlert(`Erro ao carregar mensagens: ${error.message}.`);
+                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. (Se a config. estava vazia, isto é esperado).';
+                customAlert(`Erro ao carregar mensagens: ${error.message}. O chat não está sincronizado.`);
             });
         }
 
@@ -358,8 +366,8 @@
                 return;
             }
 
-            if (!currentUserId) {
-                customAlert('Aguardando autenticação. Tente novamente em alguns segundos.');
+            if (!currentUserId || !isAuthReady) {
+                customAlert('Aguardando autenticação e inicialização. Tente novamente em alguns segundos.');
                 return;
             }
 
@@ -379,7 +387,7 @@
                 messageInput.value = ''; // Limpa o input
             } catch (e) {
                 console.error("Erro ao enviar mensagem: ", e);
-                customAlert('Erro ao enviar. Verifique o console para detalhes.');
+                customAlert('Erro ao enviar. Se você viu o aviso de "Configuração vazia", este erro é esperado. O chat não está funcional.');
             }
         });
 
