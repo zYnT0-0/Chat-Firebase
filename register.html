@@ -1,0 +1,101 @@
+<!-- register.html -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Registrar — Chat</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md p-6 bg-[#111318] rounded-lg shadow-lg">
+    <h2 class="text-xl font-semibold mb-4">Criar conta</h2>
+    <label class="text-xs opacity-70">Nome de usuário</label>
+    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" />
+    <label class="text-xs opacity-70">Senha</label>
+    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" />
+    <div class="flex gap-2">
+      <button id="btnRegister" class="flex-1 bg-blue-600 px-4 py-2 rounded">Registrar</button>
+      <a href="login.html" class="px-4 py-2 rounded border border-gray-700 text-sm">Entrar</a>
+    </div>
+    <div id="msg" class="mt-3 text-sm text-red-400"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getDatabase, ref, set, get, child, push } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
+    // CONFIG: mesma config que usa no chat
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+      authDomain: "chat-firebase-efcbe.firebaseapp.com",
+      databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+      projectId: "chat-firebase-efcbe",
+      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+      messagingSenderId: "376919463932",
+      appId: "1:376919463932:web:4b2139df551d0a026ac479",
+      measurementId: "G-R14XVTJBFL"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    // garante conexão anônima (opcional para presença)
+    signInAnonymously(auth).catch(()=>{});
+
+    const uEl = document.getElementById('username');
+    const pEl = document.getElementById('password');
+    const btn = document.getElementById('btnRegister');
+    const msg = document.getElementById('msg');
+
+    // helper: SHA-256 hashing (senha + username)
+    async function hashPassword(username, password){
+      const enc = new TextEncoder();
+      const data = enc.encode(username.toLowerCase() + '::' + password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+
+    btn.addEventListener('click', async () => {
+      msg.textContent = '';
+      const username = uEl.value.trim();
+      const password = pEl.value;
+      if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
+
+      // verifica disponibilidade /usernames/{lower}
+      const unameKey = username.toLowerCase();
+      const usernamesRef = ref(db, `usernames/${unameKey}`);
+      const snap = await get(usernamesRef);
+      if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
+
+      // cria novo uid com push
+      const usersRef = ref(db, 'users');
+      const newUserRef = push(usersRef);
+      const uid = newUserRef.key;
+      const hash = await hashPassword(username, password);
+
+      // grava usuário e mapeia username -> uid
+      const now = Date.now();
+      const userData = {
+        username,
+        passwordHash: hash,
+        createdAt: now,
+        isBanned: false,
+        friends: {},
+        lastSeen: now
+      };
+
+      await set(ref(db, `users/${uid}`), userData);
+      await set(ref(db, `usernames/${unameKey}`), uid);
+
+      // opcional: redireciona ao login
+      msg.style.color = 'lightgreen';
+      msg.textContent = 'Conta criada! Redirecionando...';
+      setTimeout(()=> location.href = 'login.html', 800);
+    });
+  </script>
+</body>
+</html>
