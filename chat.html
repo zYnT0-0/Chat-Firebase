@@ -86,23 +86,17 @@
 
   // Atualiza presença online usando .info/connected
   const connectedRef = ref(db, '.info/connected');
-  onValue(connectedRef, (snap) => {
-    if(snap.val() === true){
-      // set status online and onDisconnect offline
-      const myStatusRef = ref(db, `status/${currentUserUid}`);
-      set(myStatusRef, { state: 'online', last_changed: Date.now() });
-      // onDisconnect fallback
-      // note: in v9 web modular onDisconnect requires using onDisconnect(ref).set(...)
-      // We'll set up onDisconnect via update pattern:
-      const onDisconnect = myStatusRef;
-      // simpler: set offline on unload
-      window.addEventListener('beforeunload', async () => {
-        await set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() });
-      });
-    } else {
-      // offline
-    }
-  });
+  const connectedRef = ref(db, '.info/connected');
+onValue(connectedRef, (snap) => {
+  if (snap.val() === true) {
+    const myStatusRef = ref(db, `status/${currentUserUid}`);
+    set(myStatusRef, { state: 'online', last_changed: Date.now() });
+    statusEl.textContent = '🟢 Online';
+  } else {
+    statusEl.textContent = '🔴 Offline';
+  }
+});
+
 
   // carrega lista de amigos (ids)
   async function loadFriends(){
