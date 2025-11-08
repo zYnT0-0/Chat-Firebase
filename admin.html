@@ -1,0 +1,141 @@
+<!-- admin.html -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Admin — Chat</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen p-6">
+
+  <h1 class="text-xl mb-4">Painel Admin</h1>
+  <div id="status" class="text-sm text-gray-400 mb-4">carregando...</div>
+
+  <div class="grid grid-cols-3 gap-4">
+    <div class="col-span-1 bg-[#0f1418] p-3 rounded">
+      <h3 class="text-sm mb-2">Usuários</h3>
+      <div id="usersList" class="text-xs space-y-1 max-h-[60vh] overflow-auto"></div>
+    </div>
+
+    <div class="col-span-2 bg-[#0f1418] p-3 rounded">
+      <h3 class="text-sm mb-2">Dados do usuário</h3>
+      <div id="userData" class="text-xs"></div>
+      <div id="actions" class="mt-3"></div>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+  import { getDatabase, ref, get, onValue, remove, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+    authDomain: "chat-firebase-efcbe.firebaseapp.com",
+    databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+    projectId: "chat-firebase-efcbe",
+    storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+    messagingSenderId: "376919463932",
+    appId: "1:376919463932:web:4b2139df551d0a026ac479",
+    measurementId: "G-R14XVTJBFL"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+  signInAnonymously(auth).catch(()=>{});
+
+  // verificação: admin uid - você pode criar /admins/{uid}: true no DB via console
+  const myUid = localStorage.getItem('chat_user_uid');
+  const statusEl = document.getElementById('status');
+  const usersList = document.getElementById('usersList');
+  const userData = document.getElementById('userData');
+  const actions = document.getElementById('actions');
+
+  async function bootstrap(){
+    if(!myUid){ location.href = 'login.html'; return; }
+    const adm = await get(ref(db, `admins/${myUid}`));
+    if(!adm.exists() || adm.val() !== true){
+      statusEl.textContent = 'Acesso negado. Você não é admin.';
+      return;
+    }
+    statusEl.textContent = 'Autenticado como admin.';
+    loadUsers();
+  }
+
+  async function loadUsers(){
+    const snap = await get(ref(db, 'users'));
+    usersList.innerHTML = '';
+    if(!snap.exists()) { usersList.textContent = 'Sem usuários.'; return; }
+    const u = snap.val();
+    Object.keys(u).forEach(uid => {
+      const row = document.createElement('div');
+      row.className = 'flex justify-between items-center p-1';
+      row.innerHTML = `<span>${u[uid].username || uid}</span>`;
+      const btn = document.createElement('button'); btn.textContent = 'Ver'; btn.className='text-xs bg-blue-600 px-2 rounded';
+      btn.onclick = () => showUser(uid);
+      row.appendChild(btn);
+      usersList.appendChild(row);
+    });
+  }
+
+  async function showUser(uid){
+    const snap = await get(ref(db, `users/${uid}`));
+    if(!snap.exists()){ userData.textContent = 'não encontrado'; return; }
+    const d = snap.val();
+    userData.innerHTML = `<pre class="text-xs">${JSON.stringify(d, null, 2)}</pre>`;
+    actions.innerHTML = '';
+    const banBtn = document.createElement('button'); banBtn.textContent = d.isBanned ? 'Desbanir' : 'Banir'; banBtn.className='bg-red-600 px-3 py-1 rounded mr-2';
+    banBtn.onclick = async () => {
+      await update(ref(db, `users/${uid}`), { isBanned: !d.isBanned });
+      alert('Atualizado');
+      loadUsers();
+      showUser(uid);
+    };
+    const delBtn = document.createElement('button'); delBtn.textContent = 'Deletar conta e mensagens'; delBtn.className='bg-gray-700 px-3 py-1 rounded';
+    delBtn.onclick = async () => {
+      if(!confirm('Deletar TODA conta e mensagens deste usuário?')) return;
+      // remove user
+      await remove(ref(db, `users/${uid}`));
+      // remove username mapping (procura)
+      const usernamesSnap = await get(ref(db, 'usernames'));
+      if(usernamesSnap.exists()){
+        const names = usernamesSnap.val();
+        for(const name in names){
+          if(names[name] === uid) await remove(ref(db, `usernames/${name}`));
+        }
+      }
+      // remove messages by this user
+      const messagesSnap = await get(ref(db, 'messages'));
+      if(messagesSnap.exists()){
+        const messages = messagesSnap.val();
+        for(const mid in messages){
+          if(messages[mid].userId === uid) await remove(ref(db, `messages/${mid}`));
+        }
+      }
+      alert('Removido.');
+      loadUsers();
+      userData.innerHTML = '';
+      actions.innerHTML = '';
+    };
+
+    const dumpBtn = document.createElement('button'); dumpBtn.textContent = 'Ver mensagens'; dumpBtn.className='bg-green-600 px-3 py-1 rounded ml-2';
+    dumpBtn.onclick = async () => {
+      const msgsSnap = await get(ref(db, 'messages'));
+      let list = [];
+      if(msgsSnap.exists()){
+        const msgs = msgsSnap.val();
+        for(const id in msgs) if(msgs[id].userId === uid) list.push({ id, ...msgs[id] });
+      }
+      userData.innerHTML = `<h4 class="text-sm">Mensagens (${list.length})</h4><pre class="text-xs">${JSON.stringify(list, null, 2)}</pre>`;
+    };
+
+    actions.appendChild(banBtn);
+    actions.appendChild(delBtn);
+    actions.appendChild(dumpBtn);
+  }
+
+  bootstrap();
+</script>
+</body>
+</html>
