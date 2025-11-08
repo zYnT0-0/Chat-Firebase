@@ -53,7 +53,7 @@
   const actions = document.getElementById('actions');
 
   async function bootstrap(){
-    if(!myUid){ location.href = 'login.html'; return; }
+    if(!myUid){ location.href = 'index.html'; return; }
     const adm = await get(ref(db, `admins/${myUid}`));
     if(!adm.exists() || adm.val() !== true){
       statusEl.textContent = 'Acesso negado. Você não é admin.';
