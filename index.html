@@ -1,505 +1,394 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Livro + Comentários</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-  <style>
-   /* Variáveis para o tema escuro (padrão) */
-:root {
-    --bg-dark: #1e1e1e; /* Fundo mais escuro para a sensação de chat */
-    --fg-dark: #ffffff;
-    --accent-dark: #5865f2; /* Azul mais forte */
-    --border-dark: #36393f; /* Borda mais escura para a sensação de chat */
-    --comment-bg-dark: #36393f; /* Cinza escuro do Discord para comentários */
-    --comment-own-bg-dark: #4f545c; /* Cinza um pouco mais claro para comentários próprios */
-    --admin-bg-dark: var(--comment-bg-dark); /* Agora igual ao do comentário normal */
-    --input-bg-dark: #40444b;
-    --button-hover-dark: #4752c4; /* Ajuste para o hover do botão */
-    --container-bg-dark: #2f3136;
-    --reply-block-bg-dark: #40444b;
-    --reply-block-message-dark: #b9bbbe;
-    --reply-highlight-bg-dark: #4a5a6b; /* Fundo azul mais escuro para destaque de resposta */
-    --deleted-color-dark: #72767d; /* Cinza para mensagens excluídas */
-    --admin-name-color-dark: #f8c253; /* Amarelo dourado para admins */
-    --admin-icon-url: url('adm-icon2.png'); /* Ícone do Admin */
-}
-
-/* Variáveis para o tema claro */
-:root.light {
-    --bg-light: #f9f9f9; /* Fundo claro */
-    --fg-light: #333333;
-    --accent-light: #007bff; /* Azul padrão */
-    --border-light: #cccccc;
-    --comment-bg-light: #ffffff;
-    --comment-own-bg-light: #eef5ff; /* Fundo levemente azulado para comentários próprios */
-    --admin-bg-light: var(--comment-bg-light);
-    --input-bg-light: #ffffff;
-    --button-hover-light: #0056b3;
-    --container-bg-light: #ffffff;
-    --reply-block-bg-light: #f0f0f0;
-    --reply-block-message-light: #666666;
-    --reply-highlight-bg-light: #e0f2ff; /* Fundo azul claro para destaque */
-    --deleted-color-light: #999999;
-    --admin-name-color-light: #cc8400; /* Marrom escuro para admins */
-
-    /* Aplicando as variáveis do tema claro */
-    --bg: var(--bg-light);
-    --fg: var(--fg-light);
-    --accent: var(--accent-light);
-    --border: var(--border-light);
-    --comment-bg: var(--comment-bg-light);
-    --comment-own-bg: var(--comment-own-bg-light);
-    --admin-bg: var(--admin-bg-light);
-    --input-bg: var(--input-bg-light);
-    --button-hover: var(--button-hover-light);
-    --container-bg: var(--container-bg-light);
-    --reply-block-bg: var(--reply-block-bg-light);
-    --reply-block-message: var(--reply-block-message-light);
-    --reply-highlight-bg: var(--reply-highlight-bg-light);
-    --deleted-color: var(--deleted-color-light);
-    --admin-name-color: var(--admin-name-color-light);
-}
-
-/* Aplicando as variáveis do tema escuro por padrão */
-:root {
-    --bg: var(--bg-dark);
-    --fg: var(--fg-dark);
-    --accent: var(--accent-dark);
-    --border: var(--border-dark);
-    --comment-bg: var(--comment-bg-dark);
-    --comment-own-bg: var(--comment-own-bg-dark);
-    --admin-bg: var(--admin-bg-dark);
-    --input-bg: var(--input-bg-dark);
-    --button-hover: var(--button-hover-dark);
-    --container-bg: var(--container-bg-dark);
-    --reply-block-bg: var(--reply-block-bg-dark);
-    --reply-block-message: var(--reply-block-message-dark);
-    --reply-highlight-bg: var(--reply-highlight-bg-dark);
-    --deleted-color: var(--deleted-color-dark);
-    --admin-name-color: var(--admin-name-color-dark);
-    font-family: Arial, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
-}
-
-body {
-    background-color: var(--bg);
-    color: var(--fg);
-    margin: 0;
-    padding: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-}
-
-#chat-container {
-    width: 90%;
-    max-width: 800px;
-    background-color: var(--container-bg);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    height: 90vh; /* Ocupa a maior parte da tela */
-    margin: 20px 0;
-}
-
-#header {
-    background-color: var(--accent);
-    color: white;
-    padding: 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: bold;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    z-index: 10;
-}
-
-#user-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-#user-info {
-    font-size: 0.9em;
-    padding: 5px 10px;
-    border-radius: 4px;
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-#user-info.admin {
-    background-color: var(--admin-name-color);
-    color: var(--container-bg);
-    font-weight: bold;
-}
-
-#user-count {
-    font-size: 0.8em;
-    color: rgba(255, 255, 255, 0.8);
-}
-
-button {
-    background-color: var(--accent);
-    color: white;
-    border: none;
-    padding: 8px 15px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.2s, opacity 0.2s;
-}
-
-button:hover {
-    background-color: var(--button-hover);
-}
-
-#comment-form {
-    padding: 15px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    gap: 10px;
-    background-color: var(--container-bg);
-}
-
-#name {
-    padding: 8px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background-color: var(--input-bg);
-    color: var(--fg);
-}
-
-#reply-box {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 5px 10px;
-    background-color: var(--reply-block-bg);
-    border-radius: 4px;
-    font-size: 0.9em;
-    border-left: 3px solid var(--accent);
-}
-
-.reply-message {
-    color: var(--reply-block-message);
-}
-
-.cancel-reply-btn {
-    background: none;
-    color: var(--reply-block-message);
-    border: none;
-    padding: 0 5px;
-    font-weight: bold;
-    opacity: 0.7;
-}
-
-.cancel-reply-btn:hover {
-    background: none;
-    opacity: 1;
-    color: red;
-}
-
-#message {
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background-color: var(--input-bg);
-    color: var(--fg);
-    resize: vertical;
-    min-height: 50px;
-}
-
-#comment-form button {
-    align-self: flex-end;
-    width: 100%;
-    max-width: 150px;
-}
-
-#comments {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-/* Estilo do comentário individual */
-.comment {
-    background-color: var(--comment-bg);
-    padding: 10px;
-    border-radius: 8px;
-    position: relative;
-    transition: background-color 0.2s;
-    border-left: 3px solid transparent;
-}
-
-.comment.own-comment {
-    background-color: var(--comment-own-bg);
-    border-left: 3px solid var(--accent);
-}
-
-.comment:hover .comment-actions {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.comment-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 5px;
-    font-size: 0.9em;
-}
-
-.username {
-    font-weight: bold;
-    color: var(--fg);
-}
-
-.username.admin-name {
-    color: var(--admin-name-color);
-}
-
-.timestamp {
-    font-size: 0.8em;
-    color: var(--deleted-color);
-    margin-left: auto; /* Alinha o timestamp à direita */
-}
-
-.comment-text {
-    line-height: 1.4;
-    word-wrap: break-word;
-    white-space: pre-wrap;
-    margin-bottom: 5px;
-}
-
-.admin-icon {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    vertical-align: middle;
-}
-
-.admin-badge {
-    line-height: 0; /* Remove espaço extra para o span */
-}
-
-.comment-actions {
-    position: absolute;
-    top: 5px;
-    right: 5px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
-    display: flex;
-    gap: 5px;
-    background-color: rgba(0, 0, 0, 0.3);
-    border-radius: 4px;
-    padding: 2px;
-}
-
-.comment-actions button {
-    background: none;
-    color: var(--fg);
-    padding: 5px;
-    font-size: 0.8em;
-    border-radius: 3px;
-    transition: background-color 0.2s;
-}
-
-.comment-actions button:hover {
-    background-color: var(--accent);
-}
-
-/* Estilo para comentário excluído */
-.comment.deleted {
-    opacity: 0.6;
-    background-color: var(--reply-block-bg);
-}
-
-.comment.deleted .deleted-message {
-    font-style: italic;
-    color: var(--deleted-color);
-}
-
-/* Estilo para bloco de resposta */
-.reply-block {
-    cursor: pointer;
-    background-color: var(--reply-block-bg);
-    border-radius: 4px;
-    padding: 5px 8px;
-    margin-bottom: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border-left: 2px solid var(--accent);
-}
-
-.reply-message-text {
-    font-size: 0.8em;
-    color: var(--reply-block-message);
-}
-
-.reply-block:hover {
-    opacity: 0.9;
-}
-
-/* Destaque de resposta (animação) */
-@keyframes highlight {
-    0% { background-color: var(--reply-highlight-bg); }
-    100% { background-color: var(--comment-bg); }
-}
-.comment.highlight-reply {
-    animation: highlight 2s ease-out;
-}
-
-/* MODAL/ALERTA CUSTOMIZADO */
-.modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.3s, visibility 0.3s;
-    z-index: 1000;
-}
-
-.modal-overlay.open {
-    visibility: visible;
-    opacity: 1;
-}
-
-.modal-content {
-    background-color: var(--container-bg);
-    color: var(--fg);
-    padding: 25px;
-    border-radius: 8px;
-    width: 90%;
-    max-width: 400px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    text-align: center;
-}
-
-#modal-message {
-    margin-bottom: 15px;
-    font-size: 1.1em;
-}
-
-#modal-input, #modal-textarea {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-    border: 1px solid var(--border);
-    background-color: var(--input-bg);
-    color: var(--fg);
-    box-sizing: border-box;
-    resize: vertical;
-}
-
-.modal-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-}
-
-.modal-buttons button {
-    padding: 10px 20px;
-    flex-grow: 1;
-}
-
-.modal-buttons .cancel-btn {
-    background-color: var(--border);
-}
-
-.modal-buttons .cancel-btn:hover {
-    background-color: var(--deleted-color);
-}
-
-/* Responsividade */
-@media (max-width: 600px) {
-    #chat-container {
-        width: 100%;
-        height: 100vh;
-        margin: 0;
-        border-radius: 0;
-    }
-    #header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-    }
-    #user-controls {
-        width: 100%;
-        justify-content: space-between;
-    }
-    #comment-form button {
-        max-width: 100%;
-    }
-}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Simples com Firebase</title>
+    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Define a fonte e cores básicas */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Fundo escuro */
+            color: #c9d1d9; /* Cor do texto claro */
+        }
+        /* Estilo para a barra de chat */
+        #chat-container {
+            max-width: 90%;
+            margin: 20px auto;
+            height: calc(100vh - 40px); /* Altura total da tela menos margem */
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            background-color: #161b22; /* Fundo do container */
+        }
+        /* Área das mensagens */
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 16px;
+            background-color: #161b22;
+        }
+        /* Estilo de mensagem individual (seu original) */
+        .message {
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .my-message {
+            background-color: #2f3e58; /* Azul escuro */
+            margin-left: auto;
+            text-align: right;
+        }
+        .other-message {
+            background-color: #21262d; /* Cinza escuro */
+            margin-right: auto;
+            text-align: left;
+        }
+        .message-header {
+            font-size: 0.8rem;
+            font-weight: bold;
+            color: #58a6ff; /* Azul claro para o nome */
+            margin-bottom: 2px;
+        }
+        .message-content {
+            font-size: 0.9rem;
+        }
+        .message-timestamp {
+            font-size: 0.7rem;
+            color: #8b949e; /* Cinza claro para o timestamp */
+            margin-top: 4px;
+        }
+        /* Formulário de input */
+        #message-form {
+            padding: 12px 16px;
+            border-top: 1px solid #21262d;
+            background-color: #161b22;
+            display: flex;
+            gap: 8px;
+        }
+        #nameInput, #messageInput {
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 10px;
+            border-radius: 6px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        #nameInput:focus, #messageInput:focus {
+            border-color: #58a6ff;
+        }
+        #nameInput {
+            width: 150px;
+        }
+        #messageInput {
+            flex-grow: 1;
+        }
+        #sendButton {
+            background-color: #238636; /* Verde */
+            color: white;
+            padding: 10px 16px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        #sendButton:hover {
+            background-color: #2ea043;
+        }
+        /* Estilo para a área de status */
+        #status {
+            padding: 8px 16px;
+            background-color: #1f6feb; /* Azul de status */
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-align: center;
+        }
+        /* Estilo para o modal de aviso */
+        #custom-alert {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #21262d;
+            color: #c9d1d9;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            display: none;
+        }
+        .alert-button {
+            background-color: #58a6ff;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-top: 10px;
+            cursor: pointer;
+            float: right;
+        }
+    </style>
 </head>
 <body>
 
-  <div id="chat-container">
-    <div id="header">
-        Livro + Comentários
-        <div id="user-controls">
-            <span id="user-info">Deslogado</span>
-            <span id="user-count">0 online</span>
-            <button id="login-btn">Login Anônimo</button>
-            <button id="logout-btn" style="display:none;">Logout</button>
-            <button id="delete-account" style="display:none;">Deletar Conta</button>
-            <button id="change-theme-btn">Mudar Tema</button>
+    <div id="chat-container">
+        <div id="status" class="bg-blue-600 text-white p-2 text-sm">Carregando Chat...</div>
+        <div id="messages" class="flex flex-col space-y-2">
+            <!-- Mensagens serão injetadas aqui -->
         </div>
+        
+        <form id="message-form">
+            <input type="text" id="nameInput" placeholder="Seu nome" required maxlength="20">
+            <input type="text" id="messageInput" placeholder="Digite sua mensagem..." required>
+            <button type="submit" id="sendButton">Enviar</button>
+        </form>
     </div>
 
-    <form id="comment-form">
-      <input type="text" id="name" placeholder="Seu nome (só se não estiver logado)" style="display:block;" autocomplete="off" />
-      <div id="reply-box" style="display:none;">
-          <span class="reply-message"></span>
-          <button type="button" class="cancel-reply-btn">X</button>
-      </div>
-      <textarea id="message" placeholder="Seu comentário" required rows="3" autocomplete="off"></textarea>
-      <ul id="mention-suggestions"></ul>
-      
-      <button type="submit">Enviar</button>
-    </form>
-    <div id="comments"></div>
-  </div>
-
-  <div id="custom-modal" class="modal-overlay">
-    <div class="modal-content">
-      <p id="modal-message"></p>
-      <input type="text" id="modal-input" style="display:none;" />
-      <textarea id="modal-textarea" style="display:none;"></textarea>
-      <div class="modal-buttons">
-        <button id="modal-confirm-btn">Confirmar</button>
-        <button id="modal-cancel-btn" class="cancel-btn" style="display:none;">Cancelar</button>
-      </div>
+    <div id="custom-alert">
+        <p id="alert-message"></p>
+        <button id="alert-ok-button" class="alert-button">OK</button>
     </div>
-  </div>
 
-  <!-- FIREBASE SDKs (Compatibilidade) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+    <!-- FIREBASE SDKs (Usando Módulos Modernos para Firestore) -->
+    <script type="module">
+        // Importações necessárias para Firebase e Firestore
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        
+        // Ativar log de debug (opcional, mas útil)
+        setLogLevel('Debug');
 
-  <!-- SEU CÓDIGO JS -->
-  <script src="script.js"></script>
+        // ====================================================================
+        // 1. VARIÁVEIS DE AMBIENTE E INICIALIZAÇÃO
+        // ====================================================================
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let app;
+        let db;
+        let auth;
+        let currentUserId = null;
+        let isAuthReady = false;
+
+        const messagesDiv = document.getElementById('messages');
+        const statusDiv = document.getElementById('status');
+        const nameInput = document.getElementById('nameInput');
+        const messageInput = document.getElementById('messageInput');
+        const messageForm = document.getElementById('message-form');
+
+        // ====================================================================
+        // 2. FUNÇÕES DE UTILIDADE
+        // ====================================================================
+
+        // Custom Alert (Substitui alert() para não quebrar o iFrame)
+        function customAlert(message) {
+            const alertBox = document.getElementById('custom-alert');
+            document.getElementById('alert-message').textContent = message;
+            alertBox.style.display = 'block';
+            document.getElementById('alert-ok-button').onclick = () => {
+                alertBox.style.display = 'none';
+            };
+        }
+
+        // Rola a div de mensagens para o final
+        function scrollToBottom() {
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Formata o timestamp do Firebase para exibição
+        function formatTimestamp(timestamp) {
+            if (!timestamp) return '...';
+            // Converte timestamp do Firestore (objeto) para data JS
+            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // ====================================================================
+        // 3. INICIALIZAÇÃO DO FIREBASE E AUTENTICAÇÃO
+        // ====================================================================
+
+        async function initializeFirebase() {
+            try {
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("Configuração do Firebase não encontrada.");
+                }
+
+                app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Tenta autenticar
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Listener para garantir que a autenticação esteja completa
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                        isAuthReady = true;
+                        statusDiv.textContent = `Logado como Usuário ID: ${currentUserId.substring(0, 8)}...`;
+                        
+                        // Carrega o último nome de usuário salvo ou usa um padrão
+                        const savedUsername = localStorage.getItem('chatUsername');
+                        nameInput.value = savedUsername || `User_${Math.floor(Math.random() * 10000)}`;
+                        
+                        setupMessageListener(); // Inicia o listener de mensagens após a autenticação
+                    } else {
+                        currentUserId = null;
+                        isAuthReady = false;
+                        statusDiv.textContent = 'Autenticação falhou. Tente novamente.';
+                    }
+                });
+
+            } catch (e) {
+                console.error("Erro na inicialização do Firebase:", e);
+                statusDiv.textContent = `ERRO: Não foi possível conectar ao Firebase. Verifique o console.`;
+                customAlert(`Erro: ${e.message}. O chat não está funcional. Verifique a configuração do Firebase.`);
+            }
+        }
+
+        // ====================================================================
+        // 4. LÓGICA DO CHAT (Receber e Enviar Mensagens)
+        // ====================================================================
+
+        // Função para renderizar uma mensagem no DOM
+        function renderMessage(doc, isInitialLoad) {
+            const data = doc.data();
+            const messageId = doc.id;
+            const isMine = data.userId === currentUserId;
+            
+            // Cria o elemento da mensagem
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${isMine ? 'my-message ml-auto' : 'other-message mr-auto'}`;
+            messageElement.id = `msg-${messageId}`;
+
+            const usernameDisplay = isMine ? 'Você' : (data.username || 'Anônimo');
+
+            messageElement.innerHTML = `
+                <div class="message-header">${usernameDisplay}</div>
+                <div class="message-content">${data.text}</div>
+                <div class="message-timestamp">${formatTimestamp(data.timestamp)}</div>
+            `;
+            
+            // Adiciona ou atualiza a mensagem
+            const existing = document.getElementById(`msg-${messageId}`);
+            if (existing) {
+                messagesDiv.replaceChild(messageElement, existing);
+            } else {
+                messagesDiv.appendChild(messageElement);
+            }
+
+            // Rola para o final apenas se for uma nova mensagem ou carregamento inicial
+            if (!existing && !isInitialLoad) {
+                scrollToBottom();
+            }
+        }
+
+        // Configura o listener do Firestore para receber mensagens em tempo real
+        function setupMessageListener() {
+            if (!isAuthReady || !db) return;
+
+            const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
+            const q = query(collection(db, messagesCollectionPath));
+            
+            // onSnapshot é o listener em tempo real
+            onSnapshot(q, (snapshot) => {
+                let hasNewMessage = false;
+                
+                snapshot.docChanges().forEach((change) => {
+                    const doc = change.doc;
+                    // Se for um novo documento adicionado, renderiza e marca para rolagem
+                    if (change.type === "added") {
+                        renderMessage(doc, true); // Renderiza mensagens iniciais
+                        hasNewMessage = true;
+                    }
+                    // Se for um documento modificado (ex: edição), atualiza
+                    if (change.type === "modified") {
+                         renderMessage(doc, false);
+                    }
+                    // Se for um documento removido, remove do DOM
+                    if (change.type === "removed") {
+                        const existing = document.getElementById(`msg-${doc.id}`);
+                        if (existing) existing.remove();
+                    }
+                });
+
+                // Após processar todas as mudanças, rola para o final se houver novas mensagens
+                if (hasNewMessage) {
+                    scrollToBottom();
+                }
+                
+                // Rola para o final após o carregamento inicial completo
+                if (snapshot.size > 0 && messagesDiv.childElementCount === snapshot.size) {
+                    scrollToBottom();
+                }
+
+            }, (error) => {
+                console.error("Erro no listener do Firestore: ", error);
+                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real.';
+            });
+        }
+
+        // Envio de mensagem
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const username = nameInput.value.trim();
+            const text = messageInput.value.trim();
+
+            if (!username) {
+                customAlert('Por favor, digite seu nome.');
+                return;
+            }
+
+            if (!text) {
+                customAlert('Por favor, digite uma mensagem.');
+                return;
+            }
+
+            if (!currentUserId) {
+                customAlert('Aguardando autenticação. Tente novamente em alguns segundos.');
+                return;
+            }
+
+            // Salva o nome de usuário localmente (para futuras mensagens)
+            localStorage.setItem('chatUsername', username);
+
+            try {
+                // Salva a mensagem no Firestore
+                const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
+                await addDoc(collection(db, messagesCollectionPath), {
+                    userId: currentUserId,
+                    username: username,
+                    text: text,
+                    timestamp: serverTimestamp() // Hora do servidor Firebase
+                });
+                
+                messageInput.value = ''; // Limpa o input
+            } catch (e) {
+                console.error("Erro ao enviar mensagem: ", e);
+                customAlert('Erro ao enviar. Tente novamente.');
+            }
+        });
+
+        // ====================================================================
+        // 5. INÍCIO DO APP
+        // ====================================================================
+        initializeFirebase();
+
+    </script>
 </body>
 </html>
