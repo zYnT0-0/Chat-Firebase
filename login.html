@@ -1,0 +1,86 @@
+<!-- login.html -->
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Login — Chat</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex items-center justify-center">
+  <div class="w-full max-w-md p-6 bg-[#111318] rounded-lg shadow-lg">
+    <h2 class="text-xl font-semibold mb-4">Entrar</h2>
+    <label class="text-xs opacity-70">Nome</label>
+    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" />
+    <label class="text-xs opacity-70">Senha</label>
+    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" />
+    <div class="flex gap-2">
+      <button id="btnLogin" class="flex-1 bg-blue-600 px-4 py-2 rounded">Entrar</button>
+      <a href="register.html" class="px-4 py-2 rounded border border-gray-700 text-sm">Registrar</a>
+    </div>
+    <div id="msg" class="mt-3 text-sm text-red-400"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+      authDomain: "chat-firebase-efcbe.firebaseapp.com",
+      databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+      projectId: "chat-firebase-efcbe",
+      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+      messagingSenderId: "376919463932",
+      appId: "1:376919463932:web:4b2139df551d0a026ac479",
+      measurementId: "G-R14XVTJBFL"
+    };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+    signInAnonymously(auth).catch(()=>{});
+
+    const uEl = document.getElementById('username');
+    const pEl = document.getElementById('password');
+    const msg = document.getElementById('msg');
+
+    async function hashPassword(username, password){
+      const enc = new TextEncoder();
+      const data = enc.encode(username.toLowerCase() + '::' + password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+
+    document.getElementById('btnLogin').addEventListener('click', async () => {
+      msg.textContent = '';
+      const username = uEl.value.trim();
+      const password = pEl.value;
+      if(!username || !password){ msg.textContent = 'Preencha os campos.'; return; }
+
+      const unameKey = username.toLowerCase();
+      const usernameSnap = await get(ref(db, `usernames/${unameKey}`));
+      if(!usernameSnap.exists()){ msg.textContent = 'Usuário não encontrado.'; return; }
+
+      const uid = usernameSnap.val();
+      const userSnap = await get(ref(db, `users/${uid}`));
+      if(!userSnap.exists()){ msg.textContent = 'Usuário inválido.'; return; }
+
+      const user = userSnap.val();
+      if(user.isBanned){ msg.textContent = 'Conta banida.'; return; }
+
+      const hash = await hashPassword(username, password);
+      if(hash !== user.passwordHash){ msg.textContent = 'Senha incorreta.'; return; }
+
+      // login bem-sucedido: salva sessão local e redireciona para chat
+      localStorage.setItem('chat_user_uid', uid);
+      localStorage.setItem('chat_user_username', user.username);
+      msg.style.color = 'lightgreen';
+      msg.textContent = 'Entrando...';
+      setTimeout(()=> location.href = 'chat.html', 600);
+    });
+
+  </script>
+</body>
+</html>
