@@ -1,413 +1,153 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat Simples com Firebase</title>
-    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Define a fonte e cores básicas */
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #0d1117; /* Fundo escuro */
-            color: #c9d1d9; /* Cor do texto claro */
-        }
-        /* Estilo para a barra de chat */
-        #chat-container {
-            max-width: 90%;
-            margin: 20px auto;
-            height: calc(100vh - 40px); /* Altura total da tela menos margem */
-            display: flex;
-            flex-direction: column;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            background-color: #161b22; /* Fundo do container */
-        }
-        /* Área das mensagens */
-        #messages {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 16px;
-            background-color: #161b22;
-        }
-        /* Estilo de mensagem individual (seu original) */
-        .message {
-            margin-bottom: 8px;
-            padding: 8px 12px;
-            border-radius: 8px;
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-        .my-message {
-            background-color: #2f3e58; /* Azul escuro */
-            margin-left: auto;
-            text-align: right;
-        }
-        .other-message {
-            background-color: #21262d; /* Cinza escuro */
-            margin-right: auto;
-            text-align: left;
-        }
-        .message-header {
-            font-size: 0.8rem;
-            font-weight: bold;
-            color: #58a6ff; /* Azul claro para o nome */
-            margin-bottom: 2px;
-        }
-        .message-content {
-            font-size: 0.9rem;
-        }
-        .message-timestamp {
-            font-size: 0.7rem;
-            color: #8b949e; /* Cinza claro para o timestamp */
-            margin-top: 4px;
-        }
-        /* Formulário de input */
-        #message-form {
-            padding: 12px 16px;
-            border-top: 1px solid #21262d;
-            background-color: #161b22;
-            display: flex;
-            gap: 8px;
-        }
-        #nameInput, #messageInput {
-            background-color: #0d1117;
-            border: 1px solid #30363d;
-            color: #c9d1d9;
-            padding: 10px;
-            border-radius: 6px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-        #nameInput:focus, #messageInput:focus {
-            border-color: #58a6ff;
-        }
-        #nameInput {
-            width: 150px;
-        }
-        #messageInput {
-            flex-grow: 1;
-        }
-        #sendButton {
-            background-color: #238636; /* Verde */
-            color: white;
-            padding: 10px 16px;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        #sendButton:hover {
-            background-color: #2ea043;
-        }
-        /* Estilo para a área de status */
-        #status {
-            padding: 8px 16px;
-            background-color: #1f6feb; /* Azul de status */
-            color: white;
-            font-size: 0.9rem;
-            font-weight: 500;
-            text-align: center;
-        }
-        /* Estilo para o modal de aviso */
-        #custom-alert {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background-color: #21262d;
-            color: #c9d1d9;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            display: none;
-        }
-        .alert-button {
-            background-color: #58a6ff;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 6px;
-            margin-top: 10px;
-            cursor: pointer;
-            float: right;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Anônimo 🔥</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0d1117;
+      color: #c9d1d9;
+      overflow: hidden;
+    }
+    #messages {
+      scroll-behavior: smooth;
+    }
+    .message-enter {
+      animation: fadeIn 0.4s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
-<body>
+<body class="flex flex-col h-screen">
 
-    <div id="chat-container">
-        <div id="status" class="bg-blue-600 text-white p-2 text-sm">Carregando Chat...</div>
-        <div id="messages" class="flex flex-col space-y-2">
-            <!-- Mensagens serão injetadas aqui -->
-        </div>
-        
-        <form id="message-form">
-            <input type="text" id="nameInput" placeholder="Seu nome" required maxlength="20">
-            <input type="text" id="messageInput" placeholder="Digite sua mensagem..." required>
-            <button type="submit" id="sendButton">Enviar</button>
-        </form>
-    </div>
+  <!-- Header -->
+  <header class="bg-gray-900 shadow-lg p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold text-white">💬 Chat Anônimo</h1>
+    <span id="user-status" class="text-sm text-gray-400">Conectando...</span>
+  </header>
 
-    <div id="custom-alert">
-        <p id="alert-message"></p>
-        <button id="alert-ok-button" class="alert-button">OK</button>
-    </div>
+  <!-- Mensagens -->
+  <main id="messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3 bg-[#161b22]">
+    <div class="text-center text-gray-500 text-sm">Bem-vindo! Envie uma mensagem e veja tudo em tempo real.</div>
+  </main>
 
-    <!-- FIREBASE SDKs (Usando Módulos Modernos para Firestore) -->
-    <script type="module">
-        // Importações necessárias para Firebase e Firestore
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInWithCustomToken, onAuthStateChanged, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, query, onSnapshot, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        
-        // Ativar log de debug (opcional, mas útil)
-        setLogLevel('Debug');
+  <!-- Formulário -->
+  <form id="message-form" class="bg-gray-900 p-3 flex items-center gap-2 border-t border-gray-800">
+    <input id="username-input" type="text" placeholder="Seu nome (opcional)"
+      class="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 w-1/4 text-sm text-white focus:ring-2 focus:ring-blue-600 outline-none transition" />
+    <input id="message-input" type="text" placeholder="Digite sua mensagem..." required autocomplete="off"
+      class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-600 outline-none transition" />
+    <button type="submit"
+      class="bg-blue-600 hover:bg-blue-700 transition text-white rounded-lg px-4 py-2 font-semibold shadow-lg flex items-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send-horizontal">
+        <path d="m3 3 3 9-3 9 19-9Z" />
+        <path d="M6 12h16" />
+      </svg>
+      Enviar
+    </button>
+  </form>
 
-        // ====================================================================
-        // 1. VARIÁVEIS DE AMBIENTE E INICIALIZAÇÃO
-        // ====================================================================
-        
-        // **CONFIGURAÇÃO HARDCODED** (Usando os valores fornecidos pelo usuário)
-        const firebaseConfig = {
-            apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-            authDomain: "chat-firebase-efcbe.firebaseapp.com",
-            projectId: "chat-firebase-efcbe",
-            storageBucket: "chat-firebase-efcbe.firebasestorage.app",
-            messagingSenderId: "376919463932",
-            appId: "1:376919463932:web:4b2139df551d0a026ac479"
-        };
+  <!-- Firebase + Chat -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
 
-        // Variáveis de ambiente fornecidas pelo Canvas (necessárias para o path do Firestore e Auth Token)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    // Configuração do Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+      authDomain: "chat-firebase-efcbe.firebaseapp.com",
+      projectId: "chat-firebase-efcbe",
+      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+      messagingSenderId: "376919463932",
+      appId: "1:376919463932:web:4b2139df551d0a026ac479",
+      measurementId: "G-R14XVTJBFL"
+    };
 
-        let app;
-        let db;
-        let auth;
-        let currentUserId = null;
-        let isAuthReady = false;
+    // Inicializa Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
 
-        const messagesDiv = document.getElementById('messages');
-        const statusDiv = document.getElementById('status');
-        const nameInput = document.getElementById('nameInput');
-        const messageInput = document.getElementById('messageInput');
-        const messageForm = document.getElementById('message-form');
+    const messagesDiv = document.getElementById("messages");
+    const form = document.getElementById("message-form");
+    const messageInput = document.getElementById("message-input");
+    const usernameInput = document.getElementById("username-input");
+    const userStatus = document.getElementById("user-status");
 
-        // ====================================================================
-        // 2. FUNÇÕES DE UTILIDADE
-        // ====================================================================
+    let currentUserId = null;
 
-        // Custom Alert (Substitui alert() para não quebrar o iFrame)
-        function customAlert(message) {
-            const alertBox = document.getElementById('custom-alert');
-            document.getElementById('alert-message').textContent = message;
-            alertBox.style.display = 'block';
-            document.getElementById('alert-ok-button').onclick = () => {
-                alertBox.style.display = 'none';
-            };
-        }
+    // Login anônimo
+    signInAnonymously(auth).catch((e) => console.error("Erro de autenticação:", e));
 
-        // Rola a div de mensagens para o final
-        function scrollToBottom() {
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-        
-        // Formata o timestamp do Firebase para exibição
-        function formatTimestamp(timestamp) {
-            if (!timestamp) return '...';
-            // Converte timestamp do Firestore (objeto) para data JS
-            const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        }
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        currentUserId = user.uid;
+        userStatus.textContent = "Conectado ✅";
+        loadMessages();
+      } else {
+        userStatus.textContent = "Reconectando...";
+      }
+    });
 
-        // ====================================================================
-        // 3. INICIALIZAÇÃO DO FIREBASE E AUTENTICAÇÃO
-        // ====================================================================
+    // Carregar mensagens em tempo real
+    function loadMessages() {
+      const q = query(collection(db, "messages"), orderBy("timestamp", "asc"));
+      onSnapshot(q, (snapshot) => {
+        messagesDiv.innerHTML = "";
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const div = document.createElement("div");
+          const isMine = data.userId === currentUserId;
 
-        async function initializeFirebase() {
-            try {
-                
-                app = initializeApp(firebaseConfig);
-                db = getFirestore(app);
-                auth = getAuth(app);
-                
-                // Tenta autenticar usando o token fornecido, com fallback para anônimo se falhar.
-                try {
-                    if (initialAuthToken) {
-                        // Tenta a forma de autenticação preferida (token customizado)
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        console.log("Autenticação com token customizado tentada.");
-                    } else {
-                        // Se não houver token, usa autenticação anônima
-                        await signInAnonymously(auth);
-                        console.log("Autenticação anônima tentada (sem token).");
-                    }
-                } catch (e) {
-                    // Se a autenticação com token falhar (como com auth/admin-restricted-operation), tenta o login anônimo.
-                    console.warn(`Erro ao tentar autenticação principal (${e.code || e.message}): Tentando signInAnonymously como fallback.`);
-                    // Verifica se já não houve um usuário logado (pode acontecer se o erro for após o sucesso)
-                    if (!auth.currentUser) {
-                        await signInAnonymously(auth);
-                        console.log("Fallback para autenticação anônima bem-sucedido.");
-                    }
-                }
+          div.className = `message-enter p-3 rounded-lg max-w-[80%] break-words shadow-md ${
+            isMine
+              ? "bg-blue-600 text-white ml-auto rounded-br-none"
+              : "bg-gray-800 text-gray-100 mr-auto rounded-bl-none"
+          }`;
 
-
-                // Listener para garantir que a autenticação esteja completa
-                onAuthStateChanged(auth, (user) => {
-                    if (user) {
-                        currentUserId = user.uid;
-                        isAuthReady = true;
-                        // Exibe o ID do usuário (parcialmente) conforme regra
-                        statusDiv.textContent = `Logado (ID: ${currentUserId.substring(0, 8)}...) | Chat Público`;
-                        
-                        // Carrega o último nome de usuário salvo ou usa um padrão
-                        const savedUsername = localStorage.getItem('chatUsername');
-                        nameInput.value = savedUsername || `User_${Math.floor(Math.random() * 10000)}`;
-                        
-                        setupMessageListener(); // Inicia o listener de mensagens após a autenticação
-                    } else {
-                        currentUserId = null;
-                        isAuthReady = false;
-                        statusDiv.textContent = 'Autenticação falhou ou em progresso.';
-                    }
-                });
-
-            } catch (e) {
-                console.error("Erro fatal na inicialização do Firebase:", e);
-                statusDiv.textContent = `ERRO FATAL: ${e.code || e.message}. O chat não está funcional.`;
-                customAlert(`Erro fatal: ${e.message}. O chat não está funcional. Verifique o console.`);
-            }
-        }
-
-        // ====================================================================
-        // 4. LÓGICA DO CHAT (Receber e Enviar Mensagens)
-        // ====================================================================
-
-        // Função para renderizar uma mensagem no DOM
-        function renderMessage(doc) {
-            const data = doc.data();
-            const messageId = doc.id;
-            const isMine = data.userId === currentUserId;
-            
-            // Cria ou atualiza o elemento da mensagem
-            let messageElement = document.getElementById(`msg-${messageId}`);
-            const isNew = !messageElement;
-
-            if (isNew) {
-                messageElement = document.createElement('div');
-                messageElement.id = `msg-${messageId}`;
-            }
-
-            // Garante que a classe e a direção estejam corretas
-            messageElement.className = `message ${isMine ? 'my-message ml-auto' : 'other-message mr-auto'}`;
-
-            const usernameDisplay = isMine ? 'Você' : (data.username || 'Anônimo');
-
-            messageElement.innerHTML = `
-                <div class="message-header">${usernameDisplay}</div>
-                <div class="message-content">${data.text}</div>
-                <div class="message-timestamp">${formatTimestamp(data.timestamp)}</div>
-            `;
-            
-            if (isNew) {
-                messagesDiv.appendChild(messageElement);
-            }
-
-            // Rola para o final se for uma nova mensagem
-            if (isNew) {
-                scrollToBottom();
-            }
-        }
-
-        // Configura o listener do Firestore para receber mensagens em tempo real
-        function setupMessageListener() {
-            if (!isAuthReady || !db) return;
-
-            // Caminho para a coleção pública (MANDATORY path for multi-user apps)
-            const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
-            
-            // Cria a query: ordena por timestamp para garantir a ordem correta
-            // Nota: Para evitar erros de "índice faltando" no Firestore, a ordenação é feita aqui.
-            // Se as mensagens estiverem sempre ordenadas corretamente (como ao usar serverTimestamp), 
-            // a ordenação por JS é mais segura do que forçar um índice composto.
-            const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
-            
-            // onSnapshot é o listener em tempo real
-            onSnapshot(q, (snapshot) => {
-                
-                snapshot.docChanges().forEach((change) => {
-                    const doc = change.doc;
-                    
-                    if (change.type === "added" || change.type === "modified") {
-                        renderMessage(doc); 
-                    }
-                    
-                    // Se for um documento removido
-                    if (change.type === "removed") {
-                        const existing = document.getElementById(`msg-${doc.id}`);
-                        if (existing) existing.remove();
-                    }
-                });
-                
-            }, (error) => {
-                console.error("Erro no listener do Firestore: ", error);
-                statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. Verifique as regras de segurança do Firestore.';
-                customAlert(`Erro ao carregar mensagens: ${error.message}.`);
-            });
-        }
-
-        // Envio de mensagem
-        messageForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const username = nameInput.value.trim();
-            const text = messageInput.value.trim();
-
-            if (!username) {
-                customAlert('Por favor, digite seu nome.');
-                return;
-            }
-
-            if (!text) {
-                customAlert('Por favor, digite uma mensagem.');
-                return;
-            }
-
-            if (!currentUserId || !isAuthReady) {
-                customAlert('Aguardando autenticação e inicialização. Tente novamente em alguns segundos.');
-                return;
-            }
-
-            // Salva o nome de usuário localmente (para futuras mensagens)
-            localStorage.setItem('chatUsername', username);
-
-            try {
-                // Salva a mensagem no Firestore
-                const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
-                await addDoc(collection(db, messagesCollectionPath), {
-                    userId: currentUserId,
-                    username: username,
-                    text: text,
-                    timestamp: serverTimestamp() // Hora do servidor Firebase
-                });
-                
-                messageInput.value = ''; // Limpa o input
-            } catch (e) {
-                console.error("Erro ao enviar mensagem: ", e);
-                customAlert('Erro ao enviar mensagem. Por favor, verifique as regras de segurança do seu Firestore.');
-            }
+          div.innerHTML = `
+            <div class="text-xs opacity-70 mb-1 font-semibold">${data.username || "Anônimo"}</div>
+            <div>${data.text}</div>
+            <div class="text-[10px] opacity-50 mt-1 text-right">
+              ${data.timestamp?.seconds
+                ? new Date(data.timestamp.seconds * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                : "agora"}
+            </div>
+          `;
+          messagesDiv.appendChild(div);
         });
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      });
+    }
 
-        // ====================================================================
-        // 5. INÍCIO DO APP
-        // ====================================================================
-        initializeFirebase();
+    // Enviar mensagem
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = messageInput.value.trim();
+      if (!text || !currentUserId) return;
 
-    </script>
+      const username = usernameInput.value.trim() || "Anônimo";
+
+      await addDoc(collection(db, "messages"), {
+        userId: currentUserId,
+        username,
+        text,
+        timestamp: serverTimestamp()
+      });
+
+      messageInput.value = "";
+    });
+  </script>
+
 </body>
 </html>
