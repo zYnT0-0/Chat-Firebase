@@ -20,13 +20,23 @@
       from { opacity: 0; transform: translateY(8px); }
       to { opacity: 1; transform: translateY(0); }
     }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
+    }
   </style>
 </head>
 <body class="flex flex-col h-screen">
 
   <!-- Cabeçalho -->
   <header class="bg-gray-900 shadow-lg p-4 flex justify-between items-center">
-    <h1 class="text-xl font-bold text-white">💬 Chat Anônimo</h1>
+    <h1 class="text-xl font-bold text-white flex items-center gap-2">
+      💬 Chat Anônimo
+      <span id="connection-indicator" class="status-dot bg-yellow-400"></span>
+    </h1>
     <span id="user-status" class="text-sm text-gray-400">Conectando...</span>
   </header>
 
@@ -56,7 +66,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-    import { getDatabase, ref, push, onChildAdded, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getDatabase, ref, push, onChildAdded } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
     // Configuração do Firebase
     const firebaseConfig = {
@@ -80,18 +90,40 @@
     const messageInput = document.getElementById("message-input");
     const usernameInput = document.getElementById("username-input");
     const userStatus = document.getElementById("user-status");
+    const connectionIndicator = document.getElementById("connection-indicator");
+
     let currentUserId = null;
+    let connected = false;
 
-    // Login anônimo
-    signInAnonymously(auth).catch((e) => console.error("Erro de autenticação:", e));
+    // Funções de status visual
+    function setStatus(text, color) {
+      userStatus.textContent = text;
+      connectionIndicator.className = `status-dot ${color}`;
+    }
 
+    // Tenta autenticar e reconectar
+    function connectFirebase() {
+      setStatus("Conectando...", "bg-yellow-400");
+      signInAnonymously(auth)
+        .then(() => setStatus("Conectado ✅", "bg-green-500"))
+        .catch((e) => {
+          console.error("Erro de autenticação:", e);
+          setStatus("Erro de conexão ❌", "bg-red-500");
+          setTimeout(connectFirebase, 4000); // tenta reconectar
+        });
+    }
+
+    // Estado de autenticação
     onAuthStateChanged(auth, (user) => {
       if (user) {
         currentUserId = user.uid;
-        userStatus.textContent = "Conectado ✅";
+        connected = true;
+        setStatus("Conectado ✅", "bg-green-500");
         loadMessages();
       } else {
-        userStatus.textContent = "Reconectando...";
+        connected = false;
+        setStatus("Reconectando...", "bg-yellow-400");
+        connectFirebase();
       }
     });
 
@@ -100,11 +132,11 @@
       const messagesRef = ref(db, "messages");
       onChildAdded(messagesRef, (snapshot) => {
         const data = snapshot.val();
-        displayMessage(data);
+        if (data) displayMessage(data);
       });
     }
 
-    // Exibe mensagem no chat
+    // Exibe mensagem
     function displayMessage(data) {
       const div = document.createElement("div");
       const isMine = data.userId === currentUserId;
@@ -131,22 +163,33 @@
     // Enviar mensagem
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (!connected) {
+        alert("Você está offline. Tente novamente quando estiver conectado.");
+        return;
+      }
+
       const text = messageInput.value.trim();
       if (!text || !currentUserId) return;
 
       const username = usernameInput.value.trim() || "Anônimo";
       const messagesRef = ref(db, "messages");
 
-      push(messagesRef, {
-        userId: currentUserId,
-        username,
-        text,
-        timestamp: Date.now()
-      });
-
-      messageInput.value = "";
+      try {
+        await push(messagesRef, {
+          userId: currentUserId,
+          username,
+          text,
+          timestamp: Date.now()
+        });
+        messageInput.value = "";
+      } catch (err) {
+        console.error("Erro ao enviar:", err);
+        setStatus("Erro ao enviar ❌", "bg-red-500");
+      }
     });
-  </script>
 
+    // Inicia conexão
+    connectFirebase();
+  </script>
 </body>
 </html>
