@@ -70,12 +70,17 @@
       const usernamesRef = ref(db, `usernames/${unameKey}`);
       const snap = await get(usernamesRef);
       if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
+      const user = auth.currentUser;
+      if (!user) {
+        msg.textContent = 'Erro: usuário não autenticado.';
+        return;
+      }
+      const uid = user.uid;
+      const hash = await hashPassword(username, password);
+
 
       // cria novo uid com push
-      const usersRef = ref(db, 'users');
-      const newUserRef = push(usersRef);
-      const uid = newUserRef.key;
-      const hash = await hashPassword(username, password);
+      
 
       // grava usuário e mapeia username -> uid
       const now = Date.now();
