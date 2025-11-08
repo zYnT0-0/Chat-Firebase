@@ -171,6 +171,7 @@
         // 1. VARIÁVEIS DE AMBIENTE E INICIALIZAÇÃO
         // ====================================================================
         // O Canvas fornece as configurações necessárias através destas variáveis globais
+        // Se __firebase_config estiver indefinido, ele será um objeto vazio {}.
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
@@ -220,8 +221,10 @@
 
         async function initializeFirebase() {
             try {
+                // Removemos o throw new Error aqui. Apenas avisamos e tentamos a inicialização.
                 if (Object.keys(firebaseConfig).length === 0) {
-                    throw new Error("Configuração do Firebase não encontrada. O Canvas não forneceu as variáveis.");
+                    console.warn("AVISO: Variável __firebase_config não fornecida pelo ambiente (ou está vazia). Tentando inicializar, mas o Firestore pode falhar.");
+                    statusDiv.textContent = `AVISO: Configuração do Firebase vazia. Tentando iniciar de forma limitada.`;
                 }
 
                 app = initializeApp(firebaseConfig);
@@ -250,14 +253,17 @@
                     } else {
                         currentUserId = null;
                         isAuthReady = false;
-                        statusDiv.textContent = 'Autenticação falhou. Tente novamente.';
+                        // Mantenha o status de aviso se a configuração estiver vazia, caso contrário, falha na autenticação
+                        if (Object.keys(firebaseConfig).length !== 0) {
+                            statusDiv.textContent = 'Autenticação falhou. Tente novamente.';
+                        }
                     }
                 });
 
             } catch (e) {
-                console.error("Erro na inicialização do Firebase:", e);
-                statusDiv.textContent = `ERRO: Não foi possível conectar ao Firebase. Verifique o console.`;
-                customAlert(`Erro: ${e.message}. O chat não está funcional. Verifique o console.`);
+                console.error("Erro fatal na inicialização do Firebase:", e);
+                statusDiv.textContent = `ERRO FATAL: ${e.message}. O chat não está funcional.`;
+                customAlert(`Erro fatal: ${e.message}. O chat não está funcional. Verifique o console.`);
             }
         }
 
@@ -309,8 +315,6 @@
             const messagesCollectionPath = `artifacts/${appId}/public/data/messages`;
             
             // Cria a query: ordena por timestamp para garantir a ordem correta
-            // NOTA: 'orderBy' pode exigir a criação de um índice no Firebase, mas
-            // para o campo 'timestamp' ele geralmente funciona por padrão.
             const q = query(collection(db, messagesCollectionPath), orderBy('timestamp'));
             
             // onSnapshot é o listener em tempo real
@@ -333,6 +337,7 @@
             }, (error) => {
                 console.error("Erro no listener do Firestore: ", error);
                 statusDiv.textContent = 'ERRO: Falha na conexão de tempo real. Verifique o console.';
+                customAlert(`Erro ao carregar mensagens: ${error.message}.`);
             });
         }
 
