@@ -49,7 +49,7 @@
   /* 2. Painel de amigos (Mobile/Desktop) */
   #friendsPanel {
     transition: transform 0.3s ease-in-out;
-    transform: translateX(-100%); /* Oculto por padrão no mobile */
+    transform: translateX(-100%); 
     position: absolute; 
     top: 0;
     left: 0;
@@ -101,6 +101,26 @@
   .action-btn:hover {
       opacity: 1;
   }
+
+  /* Estilo de usuário na lista de amigos/busca */
+  .user-item {
+      padding: 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.1s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+  }
+  .user-item:hover {
+      background-color: #1f2937;
+  }
+  .user-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-left: 8px;
+  }
 </style>
 </head>
 <body>
@@ -112,11 +132,11 @@
     </button>
     <div>
       <strong class="text-sm">Chat Anônimo</strong>
-      <div id="status" class="text-xs text-gray-400">Conectando...</div>
+      <div id="status" class="text-xs text-gray-400">Carregando sessão...</div>
     </div>
   </div>
   <div class="flex items-center gap-2">
-    <a href="index.html" class="text-xs text-gray-400">Sair</a>
+    <a href="index.html" class="text-xs text-gray-400" onclick="localStorage.removeItem('chat_user_uid'); localStorage.removeItem('chat_user_username');">Sair</a>
     <a href="admin.html" id="adminLink" class="text-xs text-red-400 hidden">Admin</a>
   </div>
 </header>
@@ -163,7 +183,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebas
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-// Firebase Config (mantido o mesmo)
+// Firebase Config
 const firebaseConfig = {
   apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
   authDomain: "chat-firebase-efcbe.firebaseapp.com",
@@ -177,34 +197,51 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
 
-// **CRÍTICO**: Garante que o UID e o Username são carregados e válidos.
+// **NOVAS VARIÁVEIS GLOBAIS DE SESSÃO**
 let currentUserUid = localStorage.getItem('chat_user_uid');
 let currentUsername = localStorage.getItem('chat_user_username');
-
-// **VERIFICAÇÃO DE SESSÃO**: Se o UID não estiver no LocalStorage, força o logout.
-if(!currentUserUid){ location.href = 'index.html'; }
-
-// DEBUG: Para verificação no console do navegador (F12)
-console.log('User UID carregado:', currentUserUid);
-
 const statusEl = document.getElementById('status');
 const messagesEl = document.getElementById('messages');
 const input = document.getElementById('messageInput'); 
 const sendBtn = document.getElementById('sendBtn');
 const adminLink = document.getElementById('adminLink');
+const friendSearchInput = document.getElementById('friendSearchInput');
+const searchResultsEl = document.getElementById('searchResults');
 
+// **CRÍTICO: FUNÇÃO DE INICIALIZAÇÃO**
+async function initializeChat() {
+    // 1. Verificar UID e redirecionar se não houver
+    if (!currentUserUid) { 
+        console.warn('UID não encontrado. Redirecionando para login.');
+        location.href = 'index.html'; 
+        return; 
+    }
+
+    // 2. Tenta fazer login anônimo (necessário para o onDisconnect)
+    // Isso garante que o Firebase Auth está ativo
+    try {
+        await signInAnonymously(auth);
+        console.log("Firebase Auth Anônimo iniciado.");
+    } catch(e) {
+        console.error("Erro ao iniciar Auth Anônimo:", e);
+    }
+    
+    // 3. Inicia o resto das funcionalidades APENAS após a sessão ser validada
+    setupStatus();
+    setupChatListeners();
+    setupAdminCheck();
+    setupInputListeners();
+    setupFriendSearch();
+    statusEl.textContent = 'Conectado. Carregando dados...';
+}
+
+// 🌐 Lógica de alternância do Painel de Amigos (Mantida)
 const friendsPanel = document.getElementById('friendsPanel');
 const toggleFriendsBtn = document.getElementById('toggleFriendsBtn');
 const closeFriendsBtn = document.getElementById('closeFriendsBtn');
+// ... [Mantenha a lógica de updateFriendsPanelVisibility, toggleFriendsBtn e closeFriendsBtn aqui] ...
 
-function renderMarkdown(md){
-  const html = marked.parse(md || '');
-  return DOMPurify.sanitize(html);
-}
-
-// 🌐 Lógica de alternância do Painel de Amigos (Corrigido para usar classes de transição)
 function updateFriendsPanelVisibility() {
     if (window.innerWidth >= 768) { 
         friendsPanel.style.display = 'flex';
@@ -217,10 +254,10 @@ function updateFriendsPanelVisibility() {
         }
     }
 }
-updateFriendsPanelVisibility(); // Aplica a visibilidade inicial
+updateFriendsPanelVisibility(); 
 
 toggleFriendsBtn.addEventListener('click', () => {
-  friendsPanel.style.display = 'flex'; // Torna visível para que a transição funcione
+  friendsPanel.style.display = 'flex'; 
   requestAnimationFrame(() => {
     friendsPanel.classList.add('is-visible');
   });
@@ -236,32 +273,37 @@ closeFriendsBtn.addEventListener('click', () => {
 });
 
 window.addEventListener('resize', updateFriendsPanelVisibility);
+// --- FIM LÓGICA DE AMIGOS ---
 
 
-// 🟢 Status online/offline (CORREÇÃO CRÍTICA: onDisconnect garantido)
-const connectedRef = ref(db, '.info/connected');
-onValue(connectedRef, (snap) => {
-  if (snap.val() === true) {
-    const myStatusRef = ref(db, `status/${currentUserUid}`);
-    // **CORREÇÃO CRÍTICA**: onDisconnect garante o estado offline mesmo com fechamento brusco.
-    myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() }); 
-    set(myStatusRef, { state: 'online', last_changed: Date.now() });
-    statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>'; 
-  } else {
-    statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
-  }
-});
+// 🟢 Status online/offline (CORRIGIDO: Agora está dentro da função principal)
+function setupStatus() {
+    const connectedRef = ref(db, '.info/connected');
+    onValue(connectedRef, (snap) => {
+      if (snap.val() === true) {
+        const myStatusRef = ref(db, `status/${currentUserUid}`);
+        // onDisconnect garante o estado offline
+        myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() }); 
+        set(myStatusRef, { state: 'online', last_changed: Date.now() });
+        statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>'; 
+      } else {
+        statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
+      }
+    });
+}
 
-
-// 💬 Mensagens e Permissões (CORREÇÃO CRÍTICA DE PERMISSÃO E LAYOUT)
-const messagesRef = ref(db, 'messages');
+// 💬 Mensagens e Permissões (CORREÇÃO: A variável currentUserUid agora é garantida)
+function renderMarkdown(md){
+  const html = marked.parse(md || '');
+  return DOMPurify.sanitize(html);
+}
 
 function createMessageElement(id, data) {
   const wrapper = document.createElement('div');
   wrapper.id = `msg-${id}`;
   wrapper.className = 'flex mb-2';
   
-  // **VERIFICAÇÃO DE PERMISSÃO**: A validação correta.
+  // **VERIFICAÇÃO DE PERMISSÃO (CORRETA)**: Com o UID garantido na inicialização.
   const isMine = data.userId === currentUserUid; 
   wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
 
@@ -279,8 +321,8 @@ function createMessageElement(id, data) {
     <div class="content">${renderMarkdown(data.text)}</div>
   `;
 
-  // **CORREÇÃO DE PERMISSÃO**: Ações adicionadas APENAS se a mensagem for sua.
   if(isMine){ 
+    // ... [Mantenha a lógica dos botões editar/apagar e do modal aqui] ...
     const actions = document.createElement('div');
     actions.className = 'flex gap-2 mt-1 justify-end'; 
     
@@ -314,32 +356,33 @@ function createMessageElement(id, data) {
   return wrapper;
 }
 
-// OUVIR MENSAGENS E ATUALIZAÇÕES
-onChildAdded(messagesRef, (snap) => {
-  const id = snap.key;
-  if(document.getElementById(`msg-${id}`)) return; 
-  
-  const element = createMessageElement(id, snap.val());
-  messagesEl.appendChild(element);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-});
+function setupChatListeners() {
+    const messagesRef = ref(db, 'messages');
+    onChildAdded(messagesRef, (snap) => {
+        const id = snap.key;
+        if(document.getElementById(`msg-${id}`)) return; 
+        
+        const element = createMessageElement(id, snap.val());
+        messagesEl.appendChild(element);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
 
-onChildChanged(messagesRef, (snap) => {
-  const id = snap.key;
-  const oldElement = document.getElementById(`msg-${id}`);
-  if(oldElement){
-    const newElement = createMessageElement(id, snap.val());
-    messagesEl.replaceChild(newElement, oldElement);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-});
+    onChildChanged(messagesRef, (snap) => {
+        const id = snap.key;
+        const oldElement = document.getElementById(`msg-${id}`);
+        if(oldElement){
+            const newElement = createMessageElement(id, snap.val());
+            messagesEl.replaceChild(newElement, oldElement);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+    });
 
-onChildRemoved(messagesRef, (snap) => {
-  const id = snap.key;
-  const element = document.getElementById(`msg-${id}`);
-  if(element) element.remove();
-});
-
+    onChildRemoved(messagesRef, (snap) => {
+        const id = snap.key;
+        const element = document.getElementById(`msg-${id}`);
+        if(element) element.remove();
+    });
+}
 
 // 📝 Modal simples (edição/apagar)
 function openModal(title, content, onConfirm, confirmOnly=false){
@@ -364,46 +407,101 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
+// 🚀 Envio de mensagem e Input Listeners
+function setupInputListeners() {
+    sendBtn.addEventListener('click', async () => {
+        const text = input.value.trim();
+        if(!text) return;
+        const userSnap = await get(ref(db, `users/${currentUserUid}`));
+        if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
+        sendBtn.disabled = true;
+        await push(ref(db, 'messages'), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
+        input.value = '';
+        input.style.height = '40px'; 
+        sendBtn.disabled = false;
+    });
 
-// 🚀 Envio de mensagem
-sendBtn.addEventListener('click', async () => {
-  const text = input.value.trim();
-  if(!text) return;
-  const userSnap = await get(ref(db, `users/${currentUserUid}`));
-  if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
-  sendBtn.disabled = true;
-  await push(messagesRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
-  input.value = '';
-  input.style.height = '40px'; // Reseta a altura após o envio
-  sendBtn.disabled = false;
-});
+    input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        const minHeight = 40; 
+        const maxHeight = 150; 
+        let newHeight = input.scrollHeight;
 
-// **CORREÇÃO CRÍTICA**: Ajuste automático e robusto da altura do textarea (Input Fino)
-input.addEventListener('input', () => {
-  input.style.height = 'auto';
-  const minHeight = 40; 
-  const maxHeight = 150; 
-  let newHeight = input.scrollHeight;
+        if (newHeight < minHeight) {
+            input.style.height = minHeight + 'px';
+        } else if (newHeight > maxHeight) {
+            input.style.height = maxHeight + 'px';
+            input.scrollTop = input.scrollHeight; 
+        } else {
+            input.style.height = newHeight + 'px';
+        }
+    });
+    input.style.height = '40px'; 
+}
 
-  if (newHeight < minHeight) {
-    input.style.height = minHeight + 'px';
-  } else if (newHeight > maxHeight) {
-    input.style.height = maxHeight + 'px';
-    input.scrollTop = input.scrollHeight; 
-  } else {
-    input.style.height = newHeight + 'px';
-  }
-});
+// 🔍 **CORREÇÃO CRÍTICA**: Lógica de Pesquisa de Amigos
+let searchTimeout;
 
-// Inicializa a altura no carregamento
-input.style.height = '40px'; 
+function setupFriendSearch() {
+    friendSearchInput.addEventListener('input', () => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(performSearch, 300); // Debounce de 300ms
+    });
+}
+
+async function performSearch() {
+    const query = friendSearchInput.value.trim().toLowerCase();
+    searchResultsEl.innerHTML = ''; 
+
+    if (query.length < 3) {
+        searchResultsEl.innerHTML = '<p class="text-gray-500">Digite pelo menos 3 caracteres.</p>';
+        return;
+    }
+
+    const usernamesSnap = await get(ref(db, 'usernames'));
+    let results = [];
+    if (usernamesSnap.exists()) {
+        const allUsernames = usernamesSnap.val();
+        
+        // Filtra os usuários que contêm a query (e não é o usuário atual)
+        for (const usernameKey in allUsernames) {
+            if (usernameKey.includes(query) && allUsernames[usernameKey] !== currentUserUid) {
+                const uid = allUsernames[usernameKey];
+                const userSnap = await get(ref(db, `users/${uid}`));
+                if (userSnap.exists()) {
+                    results.push({ uid, username: userSnap.val().username });
+                }
+            }
+        }
+    }
+
+    if (results.length === 0) {
+        searchResultsEl.innerHTML = '<p class="text-gray-500">Nenhum usuário encontrado.</p>';
+    } else {
+        results.forEach(user => {
+            const userDiv = document.createElement('div');
+            userDiv.className = 'user-item flex items-center justify-between';
+            userDiv.innerHTML = `
+                <span>${user.username}</span>
+                <button class="text-blue-400 hover:text-blue-300 text-xs ml-2">Adicionar</button>
+            `;
+            // TODO: Adicionar lógica para o botão "Adicionar" (próxima etapa)
+            searchResultsEl.appendChild(userDiv);
+        });
+    }
+}
 
 
 // 🧰 Admin check
-(async function(){
-  const snap = await get(ref(db, `admins/${currentUserUid}`));
-  if(snap.exists() && snap.val() === true) adminLink.classList.remove('hidden');
-})();
+function setupAdminCheck() {
+    (async function(){
+      const snap = await get(ref(db, `admins/${currentUserUid}`));
+      if(snap.exists() && snap.val() === true) adminLink.classList.remove('hidden');
+    })();
+}
+
+// **INICIA O CHAT**
+initializeChat();
 </script>
 </body>
 </html>
