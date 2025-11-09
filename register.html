@@ -38,7 +38,8 @@
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
   const auth = getAuth(app);
-  signInAnonymously(auth).catch(()=>{}); // Inicia anonimamente para ter um UID
+  // CRÍTICO: Inicia anonimamente para ter um UID de sessão disponível imediatamente.
+  signInAnonymously(auth).catch(()=>{}); 
 
   const uEl = document.getElementById('username');
   const pEl = document.getElementById('password');
@@ -70,7 +71,7 @@
       msg.textContent = 'Erro: usuário não autenticado. Tente novamente.';
       return;
     }
-    const uid = user.uid;
+    const uid = user.uid; // Usa o UID da sessão anônima como chave do usuário real
     const hash = await hashPassword(username, password);
 
     // grava usuário e mapeia username -> uid
@@ -91,7 +92,7 @@
       await set(ref(db, `users/${uid}`), userData);
       await set(ref(db, `usernames/${unameKey}`), uid);
 
-      // **CORREÇÃO CRÍTICA**: Salva a sessão e redireciona para o chat
+      // Salva a sessão local e redireciona
       localStorage.setItem('chat_user_uid', uid);
       localStorage.setItem('chat_user_username', username);
       
