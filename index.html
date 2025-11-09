@@ -38,7 +38,7 @@
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
   const auth = getAuth(app);
-  signInAnonymously(auth).catch(()=>{}); // Inicia anonimamente
+  signInAnonymously(auth).catch(()=>{}); // Inicia anonimamente para robustez
 
   const uEl = document.getElementById('username');
   const pEl = document.getElementById('password');
@@ -64,7 +64,7 @@
 
     const uid = usernameSnap.val();
     const userSnap = await get(ref(db, `users/${uid}`));
-    if(!userSnap.exists()){ msg.textContent = 'Usuário inválido.'; return; }
+    if(!userSnap.exists()){ msg.textContent = 'Usuário inválido. (Recrie a conta ou verifique as Regras do Firebase).'; return; }
 
     const user = userSnap.val();
     if(user.isBanned){ msg.textContent = 'Conta banida.'; return; }
@@ -72,7 +72,7 @@
     const hash = await hashPassword(username, password);
     if(hash !== user.passwordHash){ msg.textContent = 'Senha incorreta.'; return; }
 
-    // login bem-sucedido: salva sessão local e redireciona para chat
+    // Login bem-sucedido: salva sessão local e redireciona para chat
     localStorage.setItem('chat_user_uid', uid);
     localStorage.setItem('chat_user_username', user.username);
     
