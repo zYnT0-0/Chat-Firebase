@@ -177,7 +177,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
 // Firebase Config
 const firebaseConfig = {
@@ -210,31 +210,10 @@ const friendSearchInput = document.getElementById('friendSearchInput');
 const searchResultsEl = document.getElementById('searchResults');
 
 
-// **CRÍTICO: FUNÇÃO DE INICIALIZAÇÃO** (Garante que o UID é validado antes de tudo)
-async function initializeChat() {
-    if (!currentUserUid) { 
-        console.warn('UID não encontrado. Redirecionando para login.');
-        location.href = 'index.html'; 
-        return; 
-    }
+// --------------------------------------------------------
+// FUNÇÕES DE LÓGICA (Sem Alterações)
+// --------------------------------------------------------
 
-    try {
-        // Tenta fazer login anônimo para ter o auth.uid ativo para as regras do Firebase
-        await signInAnonymously(auth);
-    } catch(e) {
-        console.error("Erro ao iniciar Auth Anônimo:", e);
-    }
-    
-    // Inicia todas as funcionalidades agora que o UID e o Auth estão ativos
-    setupStatus();
-    setupChatListeners();
-    setupAdminCheck();
-    setupInputListeners();
-    setupFriendSearch();
-    statusEl.textContent = '🟢 Online';
-}
-
-// 🌐 Lógica de alternância do Painel de Amigos 
 function updateFriendsPanelVisibility() {
     if (window.innerWidth >= 768) { 
         friendsPanel.style.display = 'flex';
@@ -267,14 +246,11 @@ closeFriendsBtn.addEventListener('click', () => {
 
 window.addEventListener('resize', updateFriendsPanelVisibility);
 
-
-// 🟢 Status online/offline 
 function setupStatus() {
     const connectedRef = ref(db, '.info/connected');
     onValue(connectedRef, (snap) => {
       if (snap.val() === true) {
         const myStatusRef = ref(db, `status/${currentUserUid}`);
-        // CRÍTICO: onDisconnect garante o estado offline
         myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() }); 
         set(myStatusRef, { state: 'online', last_changed: Date.now() });
         statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>'; 
@@ -284,7 +260,6 @@ function setupStatus() {
     });
 }
 
-// 💬 Mensagens e Permissões 
 function renderMarkdown(md){
   const html = marked.parse(md || '');
   return DOMPurify.sanitize(html);
@@ -295,7 +270,6 @@ function createMessageElement(id, data) {
   wrapper.id = `msg-${id}`;
   wrapper.className = 'flex mb-2';
   
-  // CRÍTICO: A verificação de permissão agora é confiável
   const isMine = data.userId === currentUserUid; 
   wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
 
@@ -375,7 +349,6 @@ function setupChatListeners() {
     });
 }
 
-// 📝 Modal simples (edição/apagar)
 function openModal(title, content, onConfirm, confirmOnly=false){
   const modal = document.createElement('div');
   modal.className = 'modal';
@@ -398,8 +371,6 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
-
-// 🚀 Envio de mensagem e Input Listeners
 function setupInputListeners() {
     sendBtn.addEventListener('click', async () => {
         const text = input.value.trim();
@@ -431,13 +402,11 @@ function setupInputListeners() {
     input.style.height = '40px'; 
 }
 
-// 🔍 **Pesquisa de Amigos (Corrigida e funcional)**
 let searchTimeout;
-
 function setupFriendSearch() {
     friendSearchInput.addEventListener('input', () => {
         clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(performSearch, 300); // Debounce de 300ms
+        searchTimeout = setTimeout(performSearch, 300); 
     });
 }
 
@@ -455,12 +424,10 @@ async function performSearch() {
     if (usernamesSnap.exists()) {
         const allUsernames = usernamesSnap.val();
         
-        // Filtra os usuários que contêm a query (e não é o usuário atual)
         for (const usernameKey in allUsernames) {
             if (usernameKey.includes(query) && allUsernames[usernameKey] !== currentUserUid) {
                 const uid = allUsernames[usernameKey];
                 
-                // CRÍTICO: Agora a leitura de users/{uid} é permitida pelas novas regras!
                 const userSnap = await get(ref(db, `users/${uid}`));
                 if (userSnap.exists()) {
                     results.push({ uid, username: userSnap.val().username });
@@ -479,14 +446,11 @@ async function performSearch() {
                 <span>${user.username}</span>
                 <button class="text-blue-400 hover:text-blue-300 text-xs ml-2">Adicionar</button>
             `;
-            // TODO: Adicionar lógica de Adicionar Amigo aqui
             searchResultsEl.appendChild(userDiv);
         });
     }
 }
 
-
-// 🧰 Admin check
 function setupAdminCheck() {
     (async function(){
       const snap = await get(ref(db, `admins/${currentUserUid}`));
@@ -494,8 +458,58 @@ function setupAdminCheck() {
     })();
 }
 
-// **INICIA O CHAT**
-initializeChat();
+// --------------------------------------------------------
+// ⚠️ BLOCO CRÍTICO DE INICIALIZAÇÃO ⚠️
+// --------------------------------------------------------
+
+// Esta é a função de inicialização real, chamada APENAS quando a sessão é VALIDADA.
+async function initializeChat() {
+    try {
+        await signInAnonymously(auth);
+    } catch(e) {
+        console.error("Erro ao iniciar Auth Anônimo:", e);
+    }
+    
+    // Inicia todas as funcionalidades
+    setupStatus();
+    setupChatListeners();
+    setupAdminCheck();
+    setupInputListeners();
+    setupFriendSearch();
+    statusEl.textContent = '🟢 Online';
+    console.log(`Sessão OK. UID: ${currentUserUid}, Nome: ${currentUsername}`);
+}
+
+
+if (currentUserUid) {
+    statusEl.textContent = 'Validando sessão...';
+    
+    // 1. Verifica no banco se o UID do localStorage é válido
+    get(ref(db, `users/${currentUserUid}`)).then(snap => {
+        if (!snap.exists()) {
+            // 2. UID CORROMPIDO ou DELETADO: Limpa o localStorage e redireciona.
+            console.warn("UID salvo localmente não existe no DB. Limpando sessão.");
+            localStorage.removeItem('chat_user_uid');
+            localStorage.removeItem('chat_user_username');
+            // Redireciona para que a página de login possa iniciar um novo processo
+            location.href = 'index.html'; 
+        } else {
+            // 3. UID VÁLIDO: Inicia o chat com segurança.
+            currentUsername = snap.val().username; 
+            localStorage.setItem('chat_user_username', currentUsername);
+            initializeChat();
+        }
+    }).catch(e => {
+        // Erro de rede ou de permissão, melhor redirecionar para re-autenticação
+        console.error("Erro ao verificar UID. Redirecionando:", e);
+        location.href = 'index.html';
+    });
+} else {
+    // 4. Sem UID no localStorage: Redireciona para login.
+    console.warn("Nenhum UID encontrado. Redirecionando para login.");
+    location.href = 'index.html';
+}
+
 </script>
 </body>
   </html>
