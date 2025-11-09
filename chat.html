@@ -211,7 +211,7 @@ const searchResultsEl = document.getElementById('searchResults');
 
 
 // --------------------------------------------------------
-// FUNÇÕES DE LÓGICA (Sem Alterações)
+// FUNÇÕES DE LÓGICA (Geral)
 // --------------------------------------------------------
 
 function updateFriendsPanelVisibility() {
@@ -371,14 +371,40 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
+
+// --------------------------------------------------------
+// ⚠️ FUNÇÃO DE ENVIO DE MENSAGENS COM DIAGNÓSTICO ⚠️
+// --------------------------------------------------------
 function setupInputListeners() {
     sendBtn.addEventListener('click', async () => {
         const text = input.value.trim();
         if(!text) return;
+        
+        // Verificação de banimento
         const userSnap = await get(ref(db, `users/${currentUserUid}`));
-        if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
+        if(userSnap.exists() && userSnap.val().isBanned){ 
+            alert('Você foi banido.'); 
+            return; 
+        }
+        
         sendBtn.disabled = true;
-        await push(ref(db, 'messages'), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
+        
+        try { 
+            // Tenta enviar a mensagem para o Firebase
+            await push(ref(db, 'messages'), { 
+                userId: currentUserUid, 
+                username: currentUsername, 
+                text, 
+                timestamp: Date.now() 
+            });
+            console.log("✅ Mensagem enviada com sucesso."); 
+        } catch (error) {
+            // Se falhar, captura o erro e informa o usuário e o console
+            console.error("🛑 ERRO AO ENVIAR MENSAGEM:", error);
+            alert(`Erro ao enviar mensagem! Verifique as Regras de Segurança do Firebase e o Console (F12). Erro: ${error.message}`);
+        }
+        
+        // Limpa o input e re-habilita o botão
         input.value = '';
         input.style.height = '40px'; 
         sendBtn.disabled = false;
@@ -401,6 +427,10 @@ function setupInputListeners() {
     });
     input.style.height = '40px'; 
 }
+// --------------------------------------------------------
+// FIM: FUNÇÃO DE ENVIO DE MENSAGENS
+// --------------------------------------------------------
+
 
 let searchTimeout;
 function setupFriendSearch() {
@@ -459,7 +489,7 @@ function setupAdminCheck() {
 }
 
 // --------------------------------------------------------
-// ⚠️ BLOCO CRÍTICO DE INICIALIZAÇÃO ⚠️
+// ⚠️ BLOCO CRÍTICO DE INICIALIZAÇÃO E VALIDAÇÃO DE SESSÃO ⚠️
 // --------------------------------------------------------
 
 // Esta é a função de inicialização real, chamada APENAS quando a sessão é VALIDADA.
@@ -474,7 +504,7 @@ async function initializeChat() {
     setupStatus();
     setupChatListeners();
     setupAdminCheck();
-    setupInputListeners();
+    setupInputListeners(); // Chama a função de envio ATUALIZADA
     setupFriendSearch();
     statusEl.textContent = '🟢 Online';
     console.log(`Sessão OK. UID: ${currentUserUid}, Nome: ${currentUsername}`);
@@ -512,5 +542,5 @@ if (currentUserUid) {
 
 </script>
 </body>
-  </html>
-  
+</html>
+
