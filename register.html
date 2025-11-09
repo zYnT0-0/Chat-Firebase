@@ -1,91 +1,118 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Registrar — Chat</title>
-<script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Registrar — Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex items-center justify-center">
+
   <div class="w-full max-w-md p-6 bg-[#111318] rounded-lg shadow-lg">
     <h2 class="text-xl font-semibold mb-4">Criar conta</h2>
+
     <label class="text-xs opacity-70">Nome de usuário</label>
-    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" />
+    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" placeholder="Ex: zyn0k"/>
+
     <label class="text-xs opacity-70">Senha</label>
-    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" />
+    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" placeholder="Mínimo 4 caracteres"/>
+
     <div class="flex gap-2">
-      <button id="btnRegister" class="flex-1 bg-blue-600 px-4 py-2 rounded">Registrar</button>
-      <a href="index.html" class="px-4 py-2 rounded border border-gray-700 text-sm">Entrar</a>
+      <button id="btnRegister" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Registrar</button>
+      <a href="index.html" class="px-4 py-2 rounded border border-gray-700 text-sm hover:bg-gray-800">Entrar</a>
     </div>
+
     <div id="msg" class="mt-3 text-sm text-red-400"></div>
   </div>
 
-<script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
+    // 🔧 CONFIGURAÇÃO FIREBASE (mesma do chat e admin)
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+      authDomain: "chat-firebase-efcbe.firebaseapp.com",
+      databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+      projectId: "chat-firebase-efcbe",
+      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+      messagingSenderId: "376919463932",
+      appId: "1:376919463932:web:4b2139df551d0a026ac479",
+      measurementId: "G-R14XVTJBFL"
+    };
 
-const uEl = document.getElementById('username');
-const pEl = document.getElementById('password');
-const btn = document.getElementById('btnRegister');
-const msg = document.getElementById('msg');
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
 
-async function hashPassword(username, password){
-  const enc = new TextEncoder();
-  const data = enc.encode(username.toLowerCase() + '::' + password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
-}
+    const uEl = document.getElementById('username');
+    const pEl = document.getElementById('password');
+    const btn = document.getElementById('btnRegister');
+    const msg = document.getElementById('msg');
 
-btn.addEventListener('click', async () => {
-  msg.textContent = '';
-  const username = uEl.value.trim();
-  const password = pEl.value;
-  if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
+    // 🔒 Hash seguro da senha (username + senha)
+    async function hashPassword(username, password){
+      const enc = new TextEncoder();
+      const data = enc.encode(username.toLowerCase() + "::" + password);
+      const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
 
-  const unameKey = username.toLowerCase();
-  const usernamesRef = ref(db, `usernames/${unameKey}`);
-  const snap = await get(usernamesRef);
-  if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
+    // 🧠 Evento principal de registro
+    btn.addEventListener('click', async () => {
+      msg.textContent = '';
+      const username = uEl.value.trim();
+      const password = pEl.value;
 
-  const user = auth.currentUser;
-  if (!user) { msg.textContent = 'Erro: usuário não autenticado.'; return; }
-  const uid = user.uid;
-  const hash = await hashPassword(username, password);
+      if (!username || password.length < 4) {
+        msg.textContent = 'Preencha um nome e senha (mínimo 4 caracteres).';
+        return;
+      }
 
-  const now = Date.now();
-  const userData = {
-    username,
-    passwordHash: hash,
-    createdAt: now,
-    isBanned: false,
-    friends: {},
-    lastSeen: now
-  };
+      const unameKey = username.toLowerCase();
 
-  await set(ref(db, `users/${uid}`), userData);
-  await set(ref(db, `usernames/${unameKey}`), uid);
+      try {
+        // verifica se o nome já existe
+        const existingSnap = await get(ref(db, `usernames/${unameKey}`));
+        if (existingSnap.exists()) {
+          msg.textContent = 'Nome de usuário já existe.';
+          return;
+        }
 
-  msg.style.color = 'lightgreen';
-  msg.textContent = 'Conta criada! Redirecionando...';
-  setTimeout(()=> location.href = 'index.html', 800);
-});
-</script>
+        // cria nova conta anônima para gerar UID único
+        const cred = await signInAnonymously(auth);
+        const uid = cred.user.uid;
+        const hash = await hashPassword(username, password);
+
+        const now = Date.now();
+
+        // grava usuário e mapeia username -> uid
+        await set(ref(db, `users/${uid}`), {
+          username,
+          passwordHash: hash,
+          createdAt: now,
+          lastSeen: now,
+          isBanned: false,
+          friends: {}
+        });
+
+        await set(ref(db, `usernames/${unameKey}`), uid);
+
+        // salva sessão local e redireciona
+        localStorage.setItem('chat_user_uid', uid);
+        localStorage.setItem('chat_user_username', username);
+
+        msg.style.color = 'lightgreen';
+        msg.textContent = 'Conta criada com sucesso! Redirecionando...';
+        setTimeout(() => location.href = 'chat.html', 1000);
+
+      } catch (err) {
+        console.error(err);
+        msg.textContent = 'Erro ao registrar. Verifique as regras do banco.';
+      }
+    });
+  </script>
 </body>
 </html>
