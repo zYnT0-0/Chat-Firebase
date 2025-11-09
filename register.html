@@ -1,3 +1,4 @@
+<!-- register.html -->
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -10,103 +11,96 @@
   <div class="w-full max-w-md p-6 bg-[#111318] rounded-lg shadow-lg">
     <h2 class="text-xl font-semibold mb-4">Criar conta</h2>
     <label class="text-xs opacity-70">Nome de usuário</label>
-    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3 focus:outline-none focus:ring-0 focus:border-blue-600" />
+    <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" />
     <label class="text-xs opacity-70">Senha</label>
-    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4 focus:outline-none focus:ring-0 focus:border-blue-600" />
+    <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" />
     <div class="flex gap-2">
-      <button id="btnRegister" class="flex-1 bg-blue-600 px-4 py-2 rounded focus:outline-none focus:ring-0 focus:border-white">Registrar</button>
-      <a href="index.html" class="px-4 py-2 rounded border border-gray-700 text-sm focus:outline-none focus:ring-0 focus:border-white">Entrar</a>
+      <button id="btnRegister" class="flex-1 bg-blue-600 px-4 py-2 rounded">Registrar</button>
+      <a href="index.html" class="px-4 py-2 rounded border border-gray-700 text-sm">Entrar</a>
     </div>
-    <div id="msg" class="mt-4 text-sm text-red-400"></div>
+    <div id="msg" class="mt-3 text-sm text-red-400"></div>
   </div>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-  import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-  import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+    import { getDatabase, ref, set, get, child, push } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-  const firebaseConfig = {
-    apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-    authDomain: "chat-firebase-efcbe.firebaseapp.com",
-    databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-    projectId: "chat-firebase-efcbe",
-    storageBucket: "chat-firebase-efcbe.firebasestorage.app",
-    messagingSenderId: "376919463932",
-    appId: "1:376919463932:web:4b2139df551d0a026ac479",
-    measurementId: "G-R14XVTJBFL"
-  };
-  const app = initializeApp(firebaseConfig);
-  const db = getDatabase(app);
-  const auth = getAuth(app);
-  // CRÍTICO: Inicia anonimamente para ter um UID de sessão disponível imediatamente.
-  signInAnonymously(auth).catch(()=>{}); 
-
-  const uEl = document.getElementById('username');
-  const pEl = document.getElementById('password');
-  const btn = document.getElementById('btnRegister');
-  const msg = document.getElementById('msg');
-
-  async function hashPassword(username, password) {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(username + '::' + password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
-  }
-
-  btn.addEventListener('click', async () => {
-    msg.textContent = '';
-    const username = uEl.value.trim();
-    const password = pEl.value;
-    if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4 caracteres).'; return; }
-
-    // verifica disponibilidade /usernames/{lower}
-    const unameKey = username.toLowerCase();
-    const usernamesRef = ref(db, `usernames/${unameKey}`);
-    const snap = await get(usernamesRef);
-    if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
-    
-    const user = auth.currentUser;
-    if (!user) {
-      msg.textContent = 'Erro: usuário não autenticado. Tente novamente.';
-      return;
-    }
-    const uid = user.uid; // Usa o UID da sessão anônima como chave do usuário real
-    const hash = await hashPassword(username, password);
-
-    // grava usuário e mapeia username -> uid
-    const now = Date.now();
-    const userData = {
-      username,
-      passwordHash: hash,
-      createdAt: now,
-      isBanned: false,
-      friends: {},
-      lastSeen: now
+    // CONFIG: mesma config que usa no chat
+    const firebaseConfig = {
+      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+      authDomain: "chat-firebase-efcbe.firebaseapp.com",
+      databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+      projectId: "chat-firebase-efcbe",
+      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+      messagingSenderId: "376919463932",
+      appId: "1:376919463932:web:4b2139df551d0a026ac479",
+      measurementId: "G-R14XVTJBFL"
     };
 
-    btn.disabled = true;
-    msg.textContent = 'Registrando...';
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
 
-    try {
+    // garante conexão anônima (opcional para presença)
+    signInAnonymously(auth).catch(()=>{});
+
+    const uEl = document.getElementById('username');
+    const pEl = document.getElementById('password');
+    const btn = document.getElementById('btnRegister');
+    const msg = document.getElementById('msg');
+
+    // helper: SHA-256 hashing (senha + username)
+    async function hashPassword(username, password){
+      const enc = new TextEncoder();
+      const data = enc.encode(username.toLowerCase() + '::' + password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+    }
+
+    btn.addEventListener('click', async () => {
+      msg.textContent = '';
+      const username = uEl.value.trim();
+      const password = pEl.value;
+      if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
+
+      // verifica disponibilidade /usernames/{lower}
+      const unameKey = username.toLowerCase();
+      const usernamesRef = ref(db, `usernames/${unameKey}`);
+      const snap = await get(usernamesRef);
+      if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
+      const user = auth.currentUser;
+      if (!user) {
+        msg.textContent = 'Erro: usuário não autenticado.';
+        return;
+      }
+      const uid = user.uid;
+      const hash = await hashPassword(username, password);
+
+
+      // cria novo uid com push
+      
+
+      // grava usuário e mapeia username -> uid
+      const now = Date.now();
+      const userData = {
+        username,
+        passwordHash: hash,
+        createdAt: now,
+        isBanned: false,
+        friends: {},
+        lastSeen: now
+      };
+
       await set(ref(db, `users/${uid}`), userData);
       await set(ref(db, `usernames/${unameKey}`), uid);
 
-      // Salva a sessão local e redireciona
-      localStorage.setItem('chat_user_uid', uid);
-      localStorage.setItem('chat_user_username', username);
-      
+      // opcional: redireciona ao login
       msg.style.color = 'lightgreen';
-      msg.textContent = 'Conta criada! Entrando no chat...';
-      setTimeout(() => {
-        location.href = 'chat.html'; 
-      }, 1000); 
-
-    } catch (error) {
-        msg.textContent = 'Erro ao salvar dados: ' + error.message;
-        btn.disabled = false;
-    }
-  });
-</script>
+      msg.textContent = 'Conta criada! Redirecionando...';
+      setTimeout(()=> location.href = 'index.html', 800);
+    });
+  </script>
 </body>
 </html>
