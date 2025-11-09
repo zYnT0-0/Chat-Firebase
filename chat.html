@@ -14,16 +14,12 @@
     color:#c9d1d9; 
     font-family:Inter,system-ui; 
   }
-  
-  /* 1. Layout Principal e Altura Total */
   .app-container {
     height: 100vh; 
     display: flex;
     flex-direction: column;
     overflow: hidden; 
   }
-
-  /* Estilos para o balão de mensagem */
   .message-bubble {
     display:inline-flex; 
     flex-direction:column;
@@ -46,7 +42,7 @@
       font-size:10px; opacity:.6; margin-left: 8px;
   }
 
-  /* 2. Painel de amigos (Mobile/Desktop) */
+  /* Painel de amigos (Mobile/Desktop) */
   #friendsPanel {
     transition: transform 0.3s ease-in-out;
     transform: translateX(-100%); 
@@ -71,7 +67,7 @@
     transform: translateX(0); 
   }
 
-  /* 3. Ajuste do campo de escrita (Input Fino Corrigido) */
+  /* Ajuste do campo de escrita */
   #messageInput {
       min-height: 40px; 
       max-height: 150px; 
@@ -198,50 +194,47 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// **NOVAS VARIÁVEIS GLOBAIS DE SESSÃO**
+// Variáveis de Sessão (Lidas do LocalStorage)
 let currentUserUid = localStorage.getItem('chat_user_uid');
 let currentUsername = localStorage.getItem('chat_user_username');
+
 const statusEl = document.getElementById('status');
 const messagesEl = document.getElementById('messages');
 const input = document.getElementById('messageInput'); 
 const sendBtn = document.getElementById('sendBtn');
 const adminLink = document.getElementById('adminLink');
+const friendsPanel = document.getElementById('friendsPanel');
+const toggleFriendsBtn = document.getElementById('toggleFriendsBtn');
+const closeFriendsBtn = document.getElementById('closeFriendsBtn');
 const friendSearchInput = document.getElementById('friendSearchInput');
 const searchResultsEl = document.getElementById('searchResults');
 
-// **CRÍTICO: FUNÇÃO DE INICIALIZAÇÃO**
+
+// **CRÍTICO: FUNÇÃO DE INICIALIZAÇÃO** (Garante que o UID é validado antes de tudo)
 async function initializeChat() {
-    // 1. Verificar UID e redirecionar se não houver
     if (!currentUserUid) { 
         console.warn('UID não encontrado. Redirecionando para login.');
         location.href = 'index.html'; 
         return; 
     }
 
-    // 2. Tenta fazer login anônimo (necessário para o onDisconnect)
-    // Isso garante que o Firebase Auth está ativo
     try {
+        // Tenta fazer login anônimo para ter o auth.uid ativo para as regras do Firebase
         await signInAnonymously(auth);
-        console.log("Firebase Auth Anônimo iniciado.");
     } catch(e) {
         console.error("Erro ao iniciar Auth Anônimo:", e);
     }
     
-    // 3. Inicia o resto das funcionalidades APENAS após a sessão ser validada
+    // Inicia todas as funcionalidades agora que o UID e o Auth estão ativos
     setupStatus();
     setupChatListeners();
     setupAdminCheck();
     setupInputListeners();
     setupFriendSearch();
-    statusEl.textContent = 'Conectado. Carregando dados...';
+    statusEl.textContent = '🟢 Online';
 }
 
-// 🌐 Lógica de alternância do Painel de Amigos (Mantida)
-const friendsPanel = document.getElementById('friendsPanel');
-const toggleFriendsBtn = document.getElementById('toggleFriendsBtn');
-const closeFriendsBtn = document.getElementById('closeFriendsBtn');
-// ... [Mantenha a lógica de updateFriendsPanelVisibility, toggleFriendsBtn e closeFriendsBtn aqui] ...
-
+// 🌐 Lógica de alternância do Painel de Amigos 
 function updateFriendsPanelVisibility() {
     if (window.innerWidth >= 768) { 
         friendsPanel.style.display = 'flex';
@@ -273,16 +266,15 @@ closeFriendsBtn.addEventListener('click', () => {
 });
 
 window.addEventListener('resize', updateFriendsPanelVisibility);
-// --- FIM LÓGICA DE AMIGOS ---
 
 
-// 🟢 Status online/offline (CORRIGIDO: Agora está dentro da função principal)
+// 🟢 Status online/offline 
 function setupStatus() {
     const connectedRef = ref(db, '.info/connected');
     onValue(connectedRef, (snap) => {
       if (snap.val() === true) {
         const myStatusRef = ref(db, `status/${currentUserUid}`);
-        // onDisconnect garante o estado offline
+        // CRÍTICO: onDisconnect garante o estado offline
         myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() }); 
         set(myStatusRef, { state: 'online', last_changed: Date.now() });
         statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>'; 
@@ -292,7 +284,7 @@ function setupStatus() {
     });
 }
 
-// 💬 Mensagens e Permissões (CORREÇÃO: A variável currentUserUid agora é garantida)
+// 💬 Mensagens e Permissões 
 function renderMarkdown(md){
   const html = marked.parse(md || '');
   return DOMPurify.sanitize(html);
@@ -303,7 +295,7 @@ function createMessageElement(id, data) {
   wrapper.id = `msg-${id}`;
   wrapper.className = 'flex mb-2';
   
-  // **VERIFICAÇÃO DE PERMISSÃO (CORRETA)**: Com o UID garantido na inicialização.
+  // CRÍTICO: A verificação de permissão agora é confiável
   const isMine = data.userId === currentUserUid; 
   wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
 
@@ -322,7 +314,6 @@ function createMessageElement(id, data) {
   `;
 
   if(isMine){ 
-    // ... [Mantenha a lógica dos botões editar/apagar e do modal aqui] ...
     const actions = document.createElement('div');
     actions.className = 'flex gap-2 mt-1 justify-end'; 
     
@@ -407,6 +398,7 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
+
 // 🚀 Envio de mensagem e Input Listeners
 function setupInputListeners() {
     sendBtn.addEventListener('click', async () => {
@@ -439,7 +431,7 @@ function setupInputListeners() {
     input.style.height = '40px'; 
 }
 
-// 🔍 **CORREÇÃO CRÍTICA**: Lógica de Pesquisa de Amigos
+// 🔍 **Pesquisa de Amigos (Corrigida e funcional)**
 let searchTimeout;
 
 function setupFriendSearch() {
@@ -467,6 +459,8 @@ async function performSearch() {
         for (const usernameKey in allUsernames) {
             if (usernameKey.includes(query) && allUsernames[usernameKey] !== currentUserUid) {
                 const uid = allUsernames[usernameKey];
+                
+                // CRÍTICO: Agora a leitura de users/{uid} é permitida pelas novas regras!
                 const userSnap = await get(ref(db, `users/${uid}`));
                 if (userSnap.exists()) {
                     results.push({ uid, username: userSnap.val().username });
@@ -485,7 +479,7 @@ async function performSearch() {
                 <span>${user.username}</span>
                 <button class="text-blue-400 hover:text-blue-300 text-xs ml-2">Adicionar</button>
             `;
-            // TODO: Adicionar lógica para o botão "Adicionar" (próxima etapa)
+            // TODO: Adicionar lógica de Adicionar Amigo aqui
             searchResultsEl.appendChild(userDiv);
         });
     }
@@ -504,4 +498,5 @@ function setupAdminCheck() {
 initializeChat();
 </script>
 </body>
-</html>
+  </html>
+  
