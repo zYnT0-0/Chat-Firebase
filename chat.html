@@ -11,12 +11,12 @@
 <style>
   body { background:#0d1117; color:#c9d1d9; font-family:Inter,system-ui; }
   
-  /* Garante que o corpo preencha a tela e não crie barra de rolagem */
+  /* 1. Garante que o corpo preencha a tela e não crie barra de rolagem geral */
   .app-container {
-    height: 100vh; /* Usa 100% da altura da viewport */
+    height: 100vh; 
     display: flex;
     flex-direction: column;
-    overflow: hidden; /* Previne a barra de rolagem do body */
+    overflow: hidden; 
   }
 
   /* Estilos para o balão de mensagem */
@@ -41,14 +41,14 @@
       font-size:10px; opacity:.6; margin-left: 8px;
   }
 
-  /* Painel de amigos em tela cheia no mobile */
+  /* 2. Painel de amigos em tela cheia no mobile (Toggle) */
   #friendsPanel.is-mobile-full-screen {
     position: absolute;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    z-index: 20; /* Fica acima de tudo, exceto o modal */
+    z-index: 20; 
     display: flex !important; /* Força a exibição */
   }
 
@@ -82,7 +82,9 @@
 <div class="flex flex-1 overflow-hidden relative">
   
   <aside id="friendsPanel" class="md:flex flex-col md:w-64 bg-[#111318] p-3 border-r border-gray-800 flex-shrink-0 hidden">
-    <button id="closeFriendsBtn" class="absolute top-2 right-2 p-1 rounded md:hidden text-white">X</button>
+    <button id="closeFriendsBtn" class="absolute top-2 right-2 p-1 rounded md:hidden text-white z-30">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    </button>
     <h3 class="text-sm font-semibold mb-2 mt-4 md:mt-0">🧑‍🤝‍🧑 Amigos & Busca</h3>
     
     <input id="friendSearchInput" placeholder="Buscar usuário..." 
@@ -159,14 +161,23 @@ function renderMarkdown(md){
 // 🌐 Lógica de alternância do Painel de Amigos no Mobile
 toggleFriendsBtn.addEventListener('click', () => {
   friendsPanel.classList.add('is-mobile-full-screen');
+  friendsPanel.style.display = 'flex'; // Garante que é exibido
 });
 closeFriendsBtn.addEventListener('click', () => {
   friendsPanel.classList.remove('is-mobile-full-screen');
+  // Se for mobile (largura < 768px), esconde-o completamente
+  if (window.innerWidth < 768) {
+     friendsPanel.style.display = 'none';
+  }
 });
-// Esconde o botão de fechar no desktop (md:hidden na estilização)
+
+// Listener para redimensionamento (volta ao modo desktop se o mobile for esticado)
 window.addEventListener('resize', () => {
     if (window.innerWidth >= 768) { // md breakpoint do Tailwind
         friendsPanel.classList.remove('is-mobile-full-screen');
+        friendsPanel.style.display = 'flex'; // Exibe como barra lateral
+    } else if (!friendsPanel.classList.contains('is-mobile-full-screen')) {
+         friendsPanel.style.display = 'none'; // Esconde se for mobile e não estiver em tela cheia
     }
 });
 
@@ -176,11 +187,10 @@ const connectedRef = ref(db, '.info/connected');
 onValue(connectedRef, (snap) => {
   if (snap.val() === true) {
     const myStatusRef = ref(db, `status/${currentUserUid}`);
+    // Adiciona onDisconnect para garantir o estado offline ao desconectar
+    myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() });
     set(myStatusRef, { state: 'online', last_changed: Date.now() });
     statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-    window.addEventListener('beforeunload', () => {
-      set(myStatusRef, { state: 'offline', last_changed: Date.now() });
-    });
   } else {
     statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
   }
@@ -196,14 +206,14 @@ async function loadFriends(){
     Object.keys(friends).forEach(fid => {
       const btn = document.createElement('button');
       btn.textContent = friends[fid].username || 'friend';
-      btn.className = 'w-full text-left px-2 py-1 bg-gray-800 rounded text-xs';
+      btn.className = 'w-full text-left px-2 py-1 bg-gray-800 rounded text-xs hover:bg-gray-700';
       friendsList.appendChild(btn);
     });
   }
 }
 loadFriends();
 
-// 🔎 Busca de amigos (CORRIGIDO: Busca em /usernames para todos os registrados)
+// 🔎 Busca de amigos (Procura em /usernames para todos os registrados)
 friendSearchInput.addEventListener('input', async (e) => {
   const q = e.target.value.trim().toLowerCase();
   searchResultsEl.innerHTML = ''; 
@@ -241,8 +251,8 @@ friendSearchInput.addEventListener('input', async (e) => {
           friendSearchInput.value = '';
           searchResultsEl.innerHTML = '<p class="text-green-500">Usuário adicionado!</p>';
           loadFriends();
-          // Fecha o painel no mobile após adicionar (opcional, mas prático)
-          friendsPanel.classList.remove('is-mobile-full-screen'); 
+          friendsPanel.classList.remove('is-mobile-full-screen'); // Fecha painel após adicionar
+          if (window.innerWidth < 768) friendsPanel.style.display = 'none';
         };
         searchResultsEl.appendChild(b);
         return user;
@@ -323,8 +333,8 @@ function createMessageElement(id, data) {
 // 1. OUVIR NOVAS MENSAGENS
 onChildAdded(messagesRef, (snap) => {
   const id = snap.key;
-  if(displayed.has(id)) return;
-  displayed.add(id);
+  // Correção: Previna a duplicação se o elemento já está na tela
+  if(document.getElementById(`msg-${id}`)) return; 
   
   const element = createMessageElement(id, snap.val());
   messagesEl.appendChild(element);
@@ -374,7 +384,6 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
-
 // 🚀 Envio de mensagem
 sendBtn.addEventListener('click', async () => {
   const text = input.value.trim();
@@ -387,402 +396,12 @@ sendBtn.addEventListener('click', async () => {
   sendBtn.disabled = false;
 });
 
-// 🧰 Admin check
-(async function(){
-  const snap = await get(ref(db, `admins/${currentUserUid}`));
-  if(snap.exists() && snap.val() === true) adminLink.classList.remove('hidden');
-})();
-</script>
-</body>
-</html>
-<!doctype html>
-<html lang="pt-BR">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat — App</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
-
-<style>
-  body { background:#0d1117; color:#c9d1d9; font-family:Inter,system-ui; }
-  
-  /* Garante que o corpo preencha a tela e não crie barra de rolagem */
-  .app-container {
-    height: 100vh; /* Usa 100% da altura da viewport */
-    display: flex;
-    flex-direction: column;
-    overflow: hidden; /* Previne a barra de rolagem do body */
-  }
-
-  /* Estilos para o balão de mensagem */
-  .message-bubble {
-    display:flex;
-    flex-direction:column;
-    min-width: 50px;
-    flex-grow: 0; 
-    word-break:break-word;
-    white-space:pre-wrap;
-    animation: fadeIn 0.2s ease-in;
-  }
-  .meta { 
-    font-size:11px; 
-    opacity:0.7; 
-    display:flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom:2px;
-  }
-  .meta-time {
-      font-size:10px; opacity:.6; margin-left: 8px;
-  }
-
-  /* Painel de amigos em tela cheia no mobile */
-  #friendsPanel.is-mobile-full-screen {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 20; /* Fica acima de tudo, exceto o modal */
-    display: flex !important; /* Força a exibição */
-  }
-
-  .modal {
-    position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center;
-    z-index:50;
-  }
-  .modal-content {
-    background:#111318; padding:16px; border-radius:8px; max-width:300px; width:90%;
-  }
-</style>
-</head>
-<body>
-<div class="app-container"> <header class="bg-[#0f1418] p-3 flex items-center justify-between border-b border-gray-800 flex-shrink-0">
-  <div class="flex items-center gap-3">
-    <button id="toggleFriendsBtn" class="p-1 rounded md:hidden">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5 text-gray-400 hover:text-white"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-    </button>
-    <div>
-      <strong class="text-sm">Chat Anônimo</strong>
-      <div id="status" class="text-xs text-gray-400">Conectando...</div>
-    </div>
-  </div>
-  <div class="flex items-center gap-2">
-    <a href="index.html" class="text-xs text-gray-400">Sair</a>
-    <a href="admin.html" id="adminLink" class="text-xs text-red-400 hidden">Admin</a>
-  </div>
-</header>
-
-<div class="flex flex-1 overflow-hidden relative">
-  
-  <aside id="friendsPanel" class="md:flex flex-col md:w-64 bg-[#111318] p-3 border-r border-gray-800 flex-shrink-0 hidden">
-    <button id="closeFriendsBtn" class="absolute top-2 right-2 p-1 rounded md:hidden text-white">X</button>
-    <h3 class="text-sm font-semibold mb-2 mt-4 md:mt-0">🧑‍🤝‍🧑 Amigos & Busca</h3>
-    
-    <input id="friendSearchInput" placeholder="Buscar usuário..." 
-           class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 text-sm mb-2 
-                  focus:outline-none focus:ring-0 focus:border-blue-600" />
-    
-    <div id="searchResults" class="flex flex-col gap-1 mb-4 text-xs max-h-40 overflow-y-auto">
-      <p class="text-gray-500">Digite para buscar...</p>
-    </div>
-
-    <h4 class="text-sm font-medium mb-2">Meus Amigos</h4>
-    <div id="friendsList" class="flex flex-col gap-1 text-xs overflow-y-auto flex-1">
-      <p class="text-gray-500">Nenhum amigo ainda.</p>
-    </div>
-  </aside>
-
-  <main id="messages" class="flex-1 overflow-y-auto p-4 space-y-2" style="background:#161b22"></main>
-
-</div> <section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-2 items-end flex-shrink-0">
-  <textarea id="messageInput" placeholder="Escreva..." rows="1"
-            class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm 
-                   focus:outline-none focus:ring-0 focus:border-blue-600"
-            style="min-height: 40px; max-height: 150px; resize: none;"></textarea>
-
-  <button id="sendBtn" class="bg-blue-600 px-3 py-2 rounded text-sm self-stretch h-10
-          focus:outline-none focus:ring-0 focus:border-white">Enviar</button>
-</section>
-
-</div> <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-// Adição de onChildChanged e onChildRemoved para Real-Time Update
-import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-
-// Firebase Config
-const firebaseConfig = {
-  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  authDomain: "chat-firebase-efcbe.firebaseapp.com",
-  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  projectId: "chat-firebase-efcbe",
-  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
-  messagingSenderId: "376919463932",
-  appId: "1:376919463932:web:4b2139df551d0a026ac479",
-  measurementId: "G-R14XVTJBFL"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
-
-let currentUserUid = localStorage.getItem('chat_user_uid');
-let currentUsername = localStorage.getItem('chat_user_username');
-if(!currentUserUid){ location.href = 'index.html'; }
-
-const statusEl = document.getElementById('status');
-const messagesEl = document.getElementById('messages');
-const input = document.getElementById('messageInput'); 
-const sendBtn = document.getElementById('sendBtn');
-const friendsList = document.getElementById('friendsList');
-const adminLink = document.getElementById('adminLink');
-
-const friendsPanel = document.getElementById('friendsPanel');
-const toggleFriendsBtn = document.getElementById('toggleFriendsBtn');
-const closeFriendsBtn = document.getElementById('closeFriendsBtn');
-
-const friendSearchInput = document.getElementById('friendSearchInput');
-const searchResultsEl = document.getElementById('searchResults');
-
-function renderMarkdown(md){
-  const html = marked.parse(md || '');
-  return DOMPurify.sanitize(html);
-}
-
-// 🌐 Lógica de alternância do Painel de Amigos no Mobile
-toggleFriendsBtn.addEventListener('click', () => {
-  friendsPanel.classList.add('is-mobile-full-screen');
-});
-closeFriendsBtn.addEventListener('click', () => {
-  friendsPanel.classList.remove('is-mobile-full-screen');
-});
-// Esconde o botão de fechar no desktop (md:hidden na estilização)
-window.addEventListener('resize', () => {
-    if (window.innerWidth >= 768) { // md breakpoint do Tailwind
-        friendsPanel.classList.remove('is-mobile-full-screen');
-    }
+// Ajuste automático da altura do textarea (para mobile)
+input.addEventListener('input', () => {
+  input.style.height = 'auto';
+  input.style.height = input.scrollHeight + 'px';
 });
 
-
-// 🟢 Status online/offline
-const connectedRef = ref(db, '.info/connected');
-onValue(connectedRef, (snap) => {
-  if (snap.val() === true) {
-    const myStatusRef = ref(db, `status/${currentUserUid}`);
-    set(myStatusRef, { state: 'online', last_changed: Date.now() });
-    statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-    window.addEventListener('beforeunload', () => {
-      set(myStatusRef, { state: 'offline', last_changed: Date.now() });
-    });
-  } else {
-    statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
-  }
-});
-
-// 🧑‍🤝‍🧑 Amigos
-async function loadFriends(){
-  const snap = await get(ref(db, `users/${currentUserUid}/friends`));
-  friendsList.innerHTML = '<p class="text-gray-500">Nenhum amigo ainda.</p>';
-  if(snap.exists()){
-    friendsList.innerHTML = '';
-    const friends = snap.val();
-    Object.keys(friends).forEach(fid => {
-      const btn = document.createElement('button');
-      btn.textContent = friends[fid].username || 'friend';
-      btn.className = 'w-full text-left px-2 py-1 bg-gray-800 rounded text-xs';
-      friendsList.appendChild(btn);
-    });
-  }
-}
-loadFriends();
-
-// 🔎 Busca de amigos (CORRIGIDO: Busca em /usernames para todos os registrados)
-friendSearchInput.addEventListener('input', async (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  searchResultsEl.innerHTML = ''; 
-  
-  if(!q) {
-    searchResultsEl.innerHTML = '<p class="text-gray-500">Digite para buscar...</p>';
-    return;
-  }
-  
-  const usernamesSnap = await get(ref(db, 'usernames')); // Busca em todos os nomes registrados
-  if(usernamesSnap.exists()){
-    const all = usernamesSnap.val();
-    let usersFound = false; 
-    
-    // Filtra os usuários que correspondem à busca (case-insensitive)
-    const filteredUnameKeys = Object.keys(all).filter(k => k.includes(q) && all[k] !== currentUserUid);
-
-    // Mapeia Promises para buscar dados completos de cada UID
-    const searchPromises = filteredUnameKeys.map(unameKey => {
-      const uid = all[unameKey];
-      return get(ref(db, `users/${uid}`)).then(s => {
-        if(!s.exists()) return null;
-        const user = s.val();
-        usersFound = true;
-
-        const b = document.createElement('button');
-        b.className = 'w-full text-left px-2 py-1 bg-gray-800 rounded text-xs hover:bg-gray-700';
-        b.textContent = user.username + ' (Adicionar)';
-        
-        b.onclick = async () => {
-          // Adiciona o amigo
-          await set(ref(db, `users/${currentUserUid}/friends/${uid}`), { username: user.username, addedAt: Date.now() });
-          
-          // Limpa e atualiza
-          friendSearchInput.value = '';
-          searchResultsEl.innerHTML = '<p class="text-green-500">Usuário adicionado!</p>';
-          loadFriends();
-          // Fecha o painel no mobile após adicionar (opcional, mas prático)
-          friendsPanel.classList.remove('is-mobile-full-screen'); 
-        };
-        searchResultsEl.appendChild(b);
-        return user;
-      });
-    });
-
-    await Promise.all(searchPromises);
-    if (!usersFound && filteredUnameKeys.length === 0) {
-      searchResultsEl.innerHTML = '<p class="text-gray-500">Nenhum usuário encontrado.</p>';
-    }
-  }
-});
-
-
-// 💬 Mensagens
-const messagesRef = ref(db, 'messages');
-const displayed = new Set(); 
-
-function createMessageElement(id, data) {
-  const wrapper = document.createElement('div');
-  wrapper.id = `msg-${id}`;
-  wrapper.className = 'flex mb-2';
-  const isMine = data.userId === currentUserUid; // AQUI ESTÁ A CORREÇÃO DE PERMISSÃO
-  wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
-
-  const bubble = document.createElement('div');
-  bubble.className = 'message-bubble p-3 rounded-lg shadow';
-  bubble.style.maxWidth = '75%';
-  bubble.style.background = isMine ? '#5865F2' : '#2f3136';
-  bubble.style.color = isMine ? 'white' : '#d6dbe3';
-
-  // Conteúdo da mensagem com nome e tempo ajustados
-  bubble.innerHTML = `
-    <div class="meta">
-      <span>${data.username || 'Anônimo'}</span> 
-      <span class="meta-time">• ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'agora'}</span>
-    </div>
-    <div class="content">${renderMarkdown(data.text)}</div>
-  `;
-
-  // BOTÕES DE EDIÇÃO/APAGAR (Visível SOMENTE se for a SUA mensagem)
-  if(isMine){ // CORREÇÃO: SOMENTE se for o usuário logado
-    const actions = document.createElement('div');
-    actions.className = 'flex gap-2 mt-1 justify-end'; 
-    const editBtn = document.createElement('button'); 
-    editBtn.textContent = 'editar'; 
-    editBtn.className='text-xs text-gray-300 hover:text-white';
-    
-    const delBtn = document.createElement('button'); 
-    delBtn.textContent = 'apagar'; 
-    delBtn.className='text-xs text-red-400 hover:text-red-500';
-    
-    actions.append(editBtn, delBtn);
-    bubble.appendChild(actions);
-
-    // Adiciona o timestamp de edição, se existir
-    if (data.editedAt) {
-      const editedStamp = document.createElement('span');
-      editedStamp.textContent = `(editado)`;
-      editedStamp.className = 'text-xs opacity-50 ml-2';
-      actions.insertBefore(editedStamp, editBtn);
-    }
-
-
-    editBtn.onclick = () => openModal('Editar mensagem', data.text, async (newText)=>{
-      if(newText.trim()) await update(ref(db, `messages/${id}`), { text: newText, editedAt: Date.now() });
-    });
-    delBtn.onclick = () => openModal('Apagar mensagem', 'Tem certeza?', async ()=>{
-      await remove(ref(db, `messages/${id}`));
-    }, true);
-  }
-
-  wrapper.appendChild(bubble);
-  return wrapper;
-}
-
-
-// 1. OUVIR NOVAS MENSAGENS
-onChildAdded(messagesRef, (snap) => {
-  const id = snap.key;
-  if(displayed.has(id)) return;
-  displayed.add(id);
-  
-  const element = createMessageElement(id, snap.val());
-  messagesEl.appendChild(element);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-});
-
-
-// 2. OUVIR MENSAGENS MODIFICADAS (Real-Time Update)
-onChildChanged(messagesRef, (snap) => {
-  const id = snap.key;
-  const oldElement = document.getElementById(`msg-${id}`);
-  if(oldElement){
-    const newElement = createMessageElement(id, snap.val());
-    messagesEl.replaceChild(newElement, oldElement);
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-});
-
-// 3. OUVIR MENSAGENS REMOVIDAS (Real-Time Update)
-onChildRemoved(messagesRef, (snap) => {
-  const id = snap.key;
-  const element = document.getElementById(`msg-${id}`);
-  if(element) element.remove();
-});
-
-
-// 📝 Modal simples (edição/apagar)
-function openModal(title, content, onConfirm, confirmOnly=false){
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <h3 class="text-sm mb-2">${title}</h3>
-      ${confirmOnly ? `<p class="text-xs mb-4">${content}</p>` :
-        `<textarea id="modalInput" class="w-full p-2 text-sm rounded bg-[#0f1418] border border-gray-700 mb-3">${content}</textarea>`}
-      <div class="flex justify-end gap-2">
-        <button id="cancelBtn" class="px-3 py-1 bg-gray-700 rounded text-sm focus:outline-none focus:ring-0 focus:border-white">Cancelar</button>
-        <button id="okBtn" class="px-3 py-1 bg-blue-600 rounded text-sm focus:outline-none focus:ring-0 focus:border-white">Confirmar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#cancelBtn').onclick = ()=> modal.remove();
-  modal.querySelector('#okBtn').onclick = async ()=>{
-    const newText = confirmOnly ? null : modal.querySelector('#modalInput').value;
-    await onConfirm(newText || '');
-    modal.remove();
-  };
-}
-
-
-// 🚀 Envio de mensagem
-sendBtn.addEventListener('click', async () => {
-  const text = input.value.trim();
-  if(!text) return;
-  const userSnap = await get(ref(db, `users/${currentUserUid}`));
-  if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
-  sendBtn.disabled = true;
-  await push(messagesRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
-  input.value = '';
-  sendBtn.disabled = false;
-});
 
 // 🧰 Admin check
 (async function(){
@@ -791,4 +410,5 @@ sendBtn.addEventListener('click', async () => {
 })();
 </script>
 </body>
-</html>
+  </html>
+  
