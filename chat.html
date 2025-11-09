@@ -21,13 +21,15 @@
 
   /* Estilos para o balão de mensagem */
   .message-bubble {
-    display:flex;
+    display:inline-flex; /* Use inline-flex para o bubble se ajustar ao seu conteúdo */
     flex-direction:column;
     min-width: 50px;
     flex-grow: 0; 
     word-break:break-word;
     white-space:pre-wrap;
     animation: fadeIn 0.2s ease-in;
+    /* Ajuste para o texto não ficar colado nas bordas */
+    padding: 10px 12px; 
   }
   .meta { 
     font-size:11px; 
@@ -60,6 +62,16 @@
   .modal-content {
     background:#111318; padding:16px; border-radius:8px; max-width:300px; width:90%;
   }
+
+  /* 3. Ajuste do campo de escrita para mobile */
+  #messageInput {
+      min-height: 40px; /* Altura mínima aceitável */
+      max-height: 150px; /* Limite o crescimento */
+      resize: none; /* Desabilita o redimensionamento manual */
+      overflow-y: auto; /* Permite rolagem se max-height for atingida */
+      align-self: center; /* Centraliza verticalmente o textarea */
+  }
+
 </style>
 </head>
 <body>
@@ -106,8 +118,7 @@
 </div> <section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-2 items-end flex-shrink-0">
   <textarea id="messageInput" placeholder="Escreva..." rows="1"
             class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm 
-                   focus:outline-none focus:ring-0 focus:border-blue-600"
-            style="min-height: 40px; max-height: 150px; resize: none;"></textarea>
+                   focus:outline-none focus:ring-0 focus:border-blue-600"></textarea>
 
   <button id="sendBtn" class="bg-blue-600 px-3 py-2 rounded text-sm self-stretch h-10
           focus:outline-none focus:ring-0 focus:border-white">Enviar</button>
@@ -116,10 +127,9 @@
 </div> <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-// Adição de onChildChanged e onChildRemoved para Real-Time Update
 import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-// Firebase Config
+// Firebase Config (mantido o mesmo)
 const firebaseConfig = {
   apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
   authDomain: "chat-firebase-efcbe.firebaseapp.com",
@@ -161,11 +171,10 @@ function renderMarkdown(md){
 // 🌐 Lógica de alternância do Painel de Amigos no Mobile
 toggleFriendsBtn.addEventListener('click', () => {
   friendsPanel.classList.add('is-mobile-full-screen');
-  friendsPanel.style.display = 'flex'; // Garante que é exibido
+  friendsPanel.style.display = 'flex'; 
 });
 closeFriendsBtn.addEventListener('click', () => {
   friendsPanel.classList.remove('is-mobile-full-screen');
-  // Se for mobile (largura < 768px), esconde-o completamente
   if (window.innerWidth < 768) {
      friendsPanel.style.display = 'none';
   }
@@ -173,22 +182,22 @@ closeFriendsBtn.addEventListener('click', () => {
 
 // Listener para redimensionamento (volta ao modo desktop se o mobile for esticado)
 window.addEventListener('resize', () => {
-    if (window.innerWidth >= 768) { // md breakpoint do Tailwind
+    if (window.innerWidth >= 768) { 
         friendsPanel.classList.remove('is-mobile-full-screen');
-        friendsPanel.style.display = 'flex'; // Exibe como barra lateral
+        friendsPanel.style.display = 'flex'; 
     } else if (!friendsPanel.classList.contains('is-mobile-full-screen')) {
-         friendsPanel.style.display = 'none'; // Esconde se for mobile e não estiver em tela cheia
+         friendsPanel.style.display = 'none'; 
     }
 });
 
 
-// 🟢 Status online/offline
+// 🟢 Status online/offline (CORRIGIDO: onDisconnect garante o estado offline)
 const connectedRef = ref(db, '.info/connected');
 onValue(connectedRef, (snap) => {
   if (snap.val() === true) {
     const myStatusRef = ref(db, `status/${currentUserUid}`);
-    // Adiciona onDisconnect para garantir o estado offline ao desconectar
-    myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() });
+    // **CORREÇÃO CRÍTICA**: Usar onDisconnect garante que o status mude para offline.
+    myStatusRef.onDisconnect().set({ state: 'offline', last_changed: Date.now() }); 
     set(myStatusRef, { state: 'online', last_changed: Date.now() });
     statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
   } else {
@@ -196,7 +205,7 @@ onValue(connectedRef, (snap) => {
   }
 });
 
-// 🧑‍🤝‍🧑 Amigos
+// 🧑‍🤝‍🧑 Amigos & Busca (Lógica mantida, buscando em /usernames)
 async function loadFriends(){
   const snap = await get(ref(db, `users/${currentUserUid}/friends`));
   friendsList.innerHTML = '<p class="text-gray-500">Nenhum amigo ainda.</p>';
@@ -213,7 +222,6 @@ async function loadFriends(){
 }
 loadFriends();
 
-// 🔎 Busca de amigos (Procura em /usernames para todos os registrados)
 friendSearchInput.addEventListener('input', async (e) => {
   const q = e.target.value.trim().toLowerCase();
   searchResultsEl.innerHTML = ''; 
@@ -223,15 +231,13 @@ friendSearchInput.addEventListener('input', async (e) => {
     return;
   }
   
-  const usernamesSnap = await get(ref(db, 'usernames')); // Busca em todos os nomes registrados
+  const usernamesSnap = await get(ref(db, 'usernames')); 
   if(usernamesSnap.exists()){
     const all = usernamesSnap.val();
     let usersFound = false; 
     
-    // Filtra os usuários que correspondem à busca (case-insensitive)
     const filteredUnameKeys = Object.keys(all).filter(k => k.includes(q) && all[k] !== currentUserUid);
 
-    // Mapeia Promises para buscar dados completos de cada UID
     const searchPromises = filteredUnameKeys.map(unameKey => {
       const uid = all[unameKey];
       return get(ref(db, `users/${uid}`)).then(s => {
@@ -244,14 +250,12 @@ friendSearchInput.addEventListener('input', async (e) => {
         b.textContent = user.username + ' (Adicionar)';
         
         b.onclick = async () => {
-          // Adiciona o amigo
           await set(ref(db, `users/${currentUserUid}/friends/${uid}`), { username: user.username, addedAt: Date.now() });
           
-          // Limpa e atualiza
           friendSearchInput.value = '';
           searchResultsEl.innerHTML = '<p class="text-green-500">Usuário adicionado!</p>';
           loadFriends();
-          friendsPanel.classList.remove('is-mobile-full-screen'); // Fecha painel após adicionar
+          friendsPanel.classList.remove('is-mobile-full-screen'); 
           if (window.innerWidth < 768) friendsPanel.style.display = 'none';
         };
         searchResultsEl.appendChild(b);
@@ -269,13 +273,12 @@ friendSearchInput.addEventListener('input', async (e) => {
 
 // 💬 Mensagens
 const messagesRef = ref(db, 'messages');
-const displayed = new Set(); 
 
 function createMessageElement(id, data) {
   const wrapper = document.createElement('div');
   wrapper.id = `msg-${id}`;
   wrapper.className = 'flex mb-2';
-  const isMine = data.userId === currentUserUid; // AQUI ESTÁ A CORREÇÃO DE PERMISSÃO
+  const isMine = data.userId === currentUserUid; 
   wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
 
   const bubble = document.createElement('div');
@@ -293,8 +296,8 @@ function createMessageElement(id, data) {
     <div class="content">${renderMarkdown(data.text)}</div>
   `;
 
-  // BOTÕES DE EDIÇÃO/APAGAR (Visível SOMENTE se for a SUA mensagem)
-  if(isMine){ // CORREÇÃO: SOMENTE se for o usuário logado
+  // **CORREÇÃO CRÍTICA**: Adicionar os botões SOMENTE se a mensagem for do usuário logado.
+  if(isMine){ 
     const actions = document.createElement('div');
     actions.className = 'flex gap-2 mt-1 justify-end'; 
     const editBtn = document.createElement('button'); 
@@ -308,14 +311,12 @@ function createMessageElement(id, data) {
     actions.append(editBtn, delBtn);
     bubble.appendChild(actions);
 
-    // Adiciona o timestamp de edição, se existir
     if (data.editedAt) {
       const editedStamp = document.createElement('span');
       editedStamp.textContent = `(editado)`;
-      editedStamp.className = 'text-xs opacity-50 ml-2';
+      editedStamp.className = 'text-xs opacity-50 mr-2';
       actions.insertBefore(editedStamp, editBtn);
     }
-
 
     editBtn.onclick = () => openModal('Editar mensagem', data.text, async (newText)=>{
       if(newText.trim()) await update(ref(db, `messages/${id}`), { text: newText, editedAt: Date.now() });
@@ -330,19 +331,16 @@ function createMessageElement(id, data) {
 }
 
 
-// 1. OUVIR NOVAS MENSAGENS
+// OUVIR MENSAGENS E ATUALIZAÇÕES
 onChildAdded(messagesRef, (snap) => {
   const id = snap.key;
-  // Correção: Previna a duplicação se o elemento já está na tela
-  if(document.getElementById(`msg-${id}`)) return; 
+  if(document.getElementById(`msg-${id}`)) return; // Previne duplicação
   
   const element = createMessageElement(id, snap.val());
   messagesEl.appendChild(element);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 });
 
-
-// 2. OUVIR MENSAGENS MODIFICADAS (Real-Time Update)
 onChildChanged(messagesRef, (snap) => {
   const id = snap.key;
   const oldElement = document.getElementById(`msg-${id}`);
@@ -353,7 +351,6 @@ onChildChanged(messagesRef, (snap) => {
   }
 });
 
-// 3. OUVIR MENSAGENS REMOVIDAS (Real-Time Update)
 onChildRemoved(messagesRef, (snap) => {
   const id = snap.key;
   const element = document.getElementById(`msg-${id}`);
@@ -384,6 +381,7 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   };
 }
 
+
 // 🚀 Envio de mensagem
 sendBtn.addEventListener('click', async () => {
   const text = input.value.trim();
@@ -393,14 +391,30 @@ sendBtn.addEventListener('click', async () => {
   sendBtn.disabled = true;
   await push(messagesRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
   input.value = '';
+  input.style.height = '40px'; // Reseta a altura após o envio
   sendBtn.disabled = false;
 });
 
-// Ajuste automático da altura do textarea (para mobile)
+// **CORREÇÃO**: Ajuste automático e robusto da altura do textarea
 input.addEventListener('input', () => {
   input.style.height = 'auto';
-  input.style.height = input.scrollHeight + 'px';
+  // Garante que a altura mínima é respeitada
+  const minHeight = 40; 
+  const maxHeight = 150; 
+  let newHeight = input.scrollHeight;
+
+  if (newHeight < minHeight) {
+    input.style.height = minHeight + 'px';
+  } else if (newHeight > maxHeight) {
+    input.style.height = maxHeight + 'px';
+    input.scrollTop = input.scrollHeight; // Rola para baixo se o limite for atingido
+  } else {
+    input.style.height = newHeight + 'px';
+  }
 });
+
+// Inicializa a altura no carregamento
+input.style.height = '40px'; 
 
 
 // 🧰 Admin check
