@@ -7,33 +7,29 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
-
 <style>
   body { background:#0d1117; color:#c9d1d9; font-family:Inter,system-ui; }
-  .message {
-    display:inline-block;
-    word-break:break-word;
-    white-space:pre-wrap;
-    animation: fadeIn 0.2s ease-in;
-  }
+  .message { display:inline-block; word-break:break-word; white-space:pre-wrap; animation: fadeIn 0.18s ease-in; border-radius:12px; }
   @keyframes fadeIn { from {opacity:0; transform:translateY(4px);} to {opacity:1; transform:translateY(0);} }
-  .meta { font-size:11px; opacity:0.7; margin-bottom:2px; }
-  .modal {
-    position:fixed; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center;
-    z-index:50;
+  .meta { font-size:11px; opacity:0.75; margin-bottom:6px; }
+  .small-btn { font-size:12px; padding:4px 8px; border-radius:6px; }
+  @media (max-width:640px) {
+    #friendToggle { display:inline-flex; }
+    #friendsList { display:none; position:fixed; inset:0; background:#0f1418; z-index:60; padding:16px; overflow:auto; }
   }
-  .modal-content {
-    background:#111318; padding:16px; border-radius:8px; max-width:300px; width:90%;
+  @media (min-width:641px) {
+    #friendToggle { display:none; }
+    #friendsList { display:flex; gap:8px; }
   }
 </style>
 </head>
 <body class="flex flex-col h-screen">
 
 <header class="bg-[#0f1418] p-3 flex items-center justify-between border-b border-gray-800">
-  <div>
+  <div class="flex items-center gap-3">
+    <button id="friendToggle" class="text-sm px-2 py-1 bg-gray-800 rounded">Amigos</button>
     <strong class="text-sm">Chat Anônimo</strong>
-    <div id="status" class="text-xs text-gray-400">Conectando...</div>
+    <div id="status" class="text-xs text-gray-400 ml-2">Conectando...</div>
   </div>
   <div class="flex items-center gap-2">
     <a href="index.html" class="text-xs text-gray-400">Sair</a>
@@ -41,30 +37,41 @@
   </div>
 </header>
 
-<main id="messages" class="flex-1 overflow-auto p-4 space-y-2" style="background:#161b22"></main>
+<main id="messages" class="flex-1 overflow-auto p-4 space-y-3" style="background:#161b22"></main>
 
-<section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-2 items-center">
-  <input id="friendSearch" placeholder="Pesquisar amigos..." class="w-1/4 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" />
-  <div id="friendsList" class="flex gap-2"></div>
-  <input id="messageInput" placeholder="Escreva..." class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" />
+<div id="friendsList" class="bg-[#0f1418] p-3 border-t border-gray-800 hidden">
+  <div class="mb-3">
+    <input id="friendSearch" placeholder="Pesquisar amigos..." class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" />
+  </div>
+  <div id="recommendations" class="space-y-2"></div>
+  <div class="mt-4">
+    <h4 class="text-sm mb-2">Seus amigos</h4>
+    <div id="friendsArea" class="space-y-2"></div>
+  </div>
+  <div class="mt-4">
+    <button id="closeFriends" class="px-3 py-2 bg-gray-700 rounded">Fechar</button>
+  </div>
+</div>
+
+<section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-2 items-start">
+  <textarea id="messageInput" placeholder="Escreva..." rows="2" class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm resize-none"></textarea>
   <button id="sendBtn" class="bg-blue-600 px-3 py-2 rounded text-sm">Enviar</button>
 </section>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
-import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, push, onChildAdded, get, set, update, onValue, remove, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-// Firebase Config
 const firebaseConfig = {
-  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  authDomain: "chat-firebase-efcbe.firebaseapp.com",
-  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  projectId: "chat-firebase-efcbe",
-  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
-  messagingSenderId: "376919463932",
-  appId: "1:376919463932:web:4b2139df551d0a026ac479",
-  measurementId: "G-R14XVTJBFL"
+  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
+  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  "projectId": "chat-firebase-efcbe",
+  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
+  "messagingSenderId": "376919463932",
+  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
+  "measurementId": "G-R14XVTJBFL"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -81,162 +88,78 @@ const input = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const friendSearch = document.getElementById('friendSearch');
 const friendsList = document.getElementById('friendsList');
+const recommendations = document.getElementById('recommendations');
+const friendsArea = document.getElementById('friendsArea');
+const friendToggle = document.getElementById('friendToggle');
+const closeFriends = document.getElementById('closeFriends');
 const adminLink = document.getElementById('adminLink');
 
-function renderMarkdown(md){
-  const html = marked.parse(md || '');
-  return DOMPurify.sanitize(html);
-}
+function renderMarkdown(md){ const html = marked.parse(md||''); return DOMPurify.sanitize(html); }
 
-// 🟢 Status online/offline
-const connectedRef = ref(db, '.info/connected');
-onValue(connectedRef, (snap) => {
-  if (snap.val() === true) {
-    const myStatusRef = ref(db, `status/${currentUserUid}`);
-    set(myStatusRef, { state: 'online', last_changed: Date.now() });
-    statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-    window.addEventListener('beforeunload', () => {
-      set(myStatusRef, { state: 'offline', last_changed: Date.now() });
-    });
-  } else {
-    statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
-  }
+// presence
+onValue(ref(db,'.info/connected'), (snap) => {
+  if(snap.val()===true){ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>'; }
+  else statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
 });
 
-// 🧑‍🤝‍🧑 Amigos
-async function loadFriends(){
-  const snap = await get(ref(db, `users/${currentUserUid}/friends`));
-  friendsList.innerHTML = '';
-  if(snap.exists()){
-    const friends = snap.val();
-    Object.keys(friends).forEach(fid => {
-      const btn = document.createElement('button');
-      btn.textContent = friends[fid].username || 'friend';
-      btn.className = 'px-2 py-1 bg-gray-800 rounded text-xs';
-      friendsList.appendChild(btn);
-    });
-  }
-}
+// friends UI
+async function loadFriends(){ const snap = await get(ref(db, `users/${currentUserUid}/friends`)); friendsArea.innerHTML = ''; if(snap.exists()){ const f = snap.val(); Object.keys(f).forEach(uid=>{ const btn = document.createElement('button'); btn.textContent = f[uid].username; btn.className='w-full text-left px-3 py-2 bg-gray-800 rounded'; btn.onclick = ()=>{ alert('Abrir chat com '+f[uid].username+' (não implementado aqui)'); }; friendsArea.appendChild(btn); }); } }
 loadFriends();
 
-// 🔎 Busca de amigos
-friendSearch.addEventListener('input', async (e) => {
+// toggle friends (mobile)
+friendToggle.onclick = ()=>{ friendsList.style.display = 'block'; };
+closeFriends.onclick = ()=>{ friendsList.style.display = 'none'; };
+
+// recommendations (search)
+friendSearch.addEventListener('input', async (e)=>{
   const q = e.target.value.trim().toLowerCase();
-  friendsList.innerHTML = '';
+  recommendations.innerHTML = '';
   if(!q) return;
-  const usernamesSnap = await get(ref(db, 'usernames'));
-  if(usernamesSnap.exists()){
-    const all = usernamesSnap.val();
-    Object.keys(all).forEach(k => {
-      if(k.includes(q)){
-        const uid = all[k];
-        get(ref(db, `users/${uid}`)).then(s => {
-          if(!s.exists()) return;
-          const user = s.val();
-          const b = document.createElement('button');
-          b.className = 'px-2 py-1 bg-gray-800 rounded text-xs hover:bg-gray-700';
-          b.textContent = user.username;
-          b.onclick = async () => {
-            await set(ref(db, `users/${currentUserUid}/friends/${uid}`), { username: user.username, addedAt: Date.now() });
-            friendSearch.value = '';
-            loadFriends();
-          };
-          friendsList.appendChild(b);
-        });
-      }
-    });
-  }
+  const snap = await get(ref(db,'usernames'));
+  if(!snap.exists()) return;
+  const all = snap.val();
+  Object.keys(all).forEach(k=>{ if(k.includes(q)){ const uid = all[k]; get(ref(db, `users/${uid}`)).then(s=>{ if(!s.exists()) return; const user = s.val(); const row = document.createElement('div'); row.className='p-2 bg-[#111318] rounded flex justify-between items-center'; const name = document.createElement('div'); name.textContent = user.username; const add = document.createElement('button'); add.textContent='Adicionar'; add.className='small-btn bg-blue-600 text-white'; add.onclick = async ()=>{ await set(ref(db, `friendRequests/${uid}/${currentUserUid}`), { username: currentUsername, from: currentUserUid }); add.textContent='Enviado'; }; row.appendChild(name); row.appendChild(add); recommendations.appendChild(row); }); }});
 });
 
-// 💬 Mensagens
-const messagesRef = ref(db, 'messages');
+// messages
+const messagesRef = ref(db,'messages');
 const displayed = new Set();
 
-onChildAdded(messagesRef, (snap) => {
-  const id = snap.key;
-  if(displayed.has(id)) return;
-  displayed.add(id);
-  const data = snap.val();
-
+function createBubble(id,data){
   const wrapper = document.createElement('div');
-  wrapper.className = 'flex mb-2';
+  wrapper.className = 'flex';
   const isMine = data.userId === currentUserUid;
   wrapper.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
-
   const bubble = document.createElement('div');
-  bubble.className = 'message p-3 rounded-lg shadow';
-  bubble.style.maxWidth = '75%';
+  bubble.className = 'message p-3 shadow';
+  bubble.style.maxWidth = '78%';
   bubble.style.background = isMine ? '#5865F2' : '#2f3136';
   bubble.style.color = isMine ? 'white' : '#d6dbe3';
-
-  bubble.innerHTML = `
-    <div class="meta">${data.username || 'Anônimo'} 
-      <span style="font-size:10px; opacity:.6">• ${data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'agora'}</span>
-    </div>
-    <div class="content">${renderMarkdown(data.text)}</div>
-  `;
-
-  if(isMine){
-    const actions = document.createElement('div');
-    actions.className = 'flex gap-2 mt-1';
-    const editBtn = document.createElement('button'); editBtn.textContent = 'editar'; editBtn.className='text-xs text-gray-300 hover:text-white';
-    const delBtn = document.createElement('button'); delBtn.textContent = 'apagar'; delBtn.className='text-xs text-red-400 hover:text-red-500';
-    actions.append(editBtn, delBtn);
-    bubble.appendChild(actions);
-
-    editBtn.onclick = () => openModal('Editar mensagem', data.text, async (newText)=>{
-      if(newText.trim()) await update(ref(db, `messages/${id}`), { text: newText, editedAt: Date.now() });
-    });
-    delBtn.onclick = () => openModal('Apagar mensagem', 'Tem certeza?', async ()=>{
-      await remove(ref(db, `messages/${id}`));
-    }, true);
-  }
-
+  bubble.innerHTML = `<div class="meta">${data.username||'Anônimo'} <span style="font-size:10px; opacity:.6">• ${data.timestamp? new Date(data.timestamp).toLocaleTimeString():'agora'}</span></div>
+    <div class="content">${renderMarkdown(data.text)}</div>`;
+  if(isMine){ const actions = document.createElement('div'); actions.className='flex gap-2 mt-2'; const edit = document.createElement('button'); edit.className='text-xs text-gray-300 hover:text-white'; edit.textContent='editar'; const del = document.createElement('button'); del.className='text-xs text-red-400 hover:text-red-500'; del.textContent='apagar';
+    edit.onclick = ()=> openModal('Editar','', async (newText)=>{ if(newText.trim()) await update(ref(db, `messages/${id}`), { text:newText, editedAt:Date.now() }); });
+    del.onclick = ()=> openModal('Apagar','Tem certeza?', async ()=>{ await remove(ref(db, `messages/${id}`)); }, true);
+    actions.append(edit,del); bubble.appendChild(actions); }
   wrapper.appendChild(bubble);
-  messagesEl.appendChild(wrapper);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-});
-
-// 📝 Modal simples (edição/apagar)
-function openModal(title, content, onConfirm, confirmOnly=false){
-  const modal = document.createElement('div');
-  modal.className = 'modal';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <h3 class="text-sm mb-2">${title}</h3>
-      ${confirmOnly ? `<p class="text-xs mb-4">${content}</p>` :
-        `<textarea id="modalInput" class="w-full p-2 text-sm rounded bg-[#0f1418] border border-gray-700 mb-3">${content}</textarea>`}
-      <div class="flex justify-end gap-2">
-        <button id="cancelBtn" class="px-3 py-1 bg-gray-700 rounded text-sm">Cancelar</button>
-        <button id="okBtn" class="px-3 py-1 bg-blue-600 rounded text-sm">Confirmar</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.querySelector('#cancelBtn').onclick = ()=> modal.remove();
-  modal.querySelector('#okBtn').onclick = async ()=>{
-    const newText = confirmOnly ? null : modal.querySelector('#modalInput').value;
-    await onConfirm(newText || '');
-    modal.remove();
-  };
+  return wrapper;
 }
 
-// 🚀 Envio de mensagem
-sendBtn.addEventListener('click', async () => {
-  const text = input.value.trim();
-  if(!text) return;
-  const userSnap = await get(ref(db, `users/${currentUserUid}`));
-  if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
-  sendBtn.disabled = true;
-  await push(messagesRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
-  input.value = '';
-  sendBtn.disabled = false;
-});
+onChildAdded(messagesRef, (snap)=>{ const id = snap.key; if(displayed.has(id)) return; displayed.add(id); const data = snap.val(); const node = createBubble(id,data); messagesEl.appendChild(node); messagesEl.scrollTop = messagesEl.scrollHeight; });
+// react to changes and removals
+onChildChanged(messagesRef, (snap)=>{ rebuildMessages(); });
+onChildRemoved(messagesRef, (snap)=>{ rebuildMessages(); });
 
-// 🧰 Admin check
-(async function(){
-  const snap = await get(ref(db, `admins/${currentUserUid}`));
-  if(snap.exists() && snap.val() === true) adminLink.classList.remove('hidden');
-})();
+async function rebuildMessages(){ messagesEl.innerHTML=''; displayed.clear(); const s = await get(messagesRef); if(!s.exists()) return; const msgs = s.val(); Object.keys(msgs).forEach(k=>{ displayed.add(k); messagesEl.appendChild(createBubble(k,msgs[k])); }); messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+// modal
+function openModal(title, content, onConfirm, confirmOnly=false){ const modal = document.createElement('div'); modal.style.position='fixed'; modal.style.inset='0'; modal.style.background='rgba(0,0,0,0.6)'; modal.style.display='flex'; modal.style.alignItems='center'; modal.style.justifyContent='center'; modal.style.zIndex='90'; const box = document.createElement('div'); box.style.background='#111318'; box.style.padding='14px'; box.style.borderRadius='8px'; box.style.width='90%'; box.style.maxWidth='360px'; const h = document.createElement('h3'); h.textContent=title; h.className='text-sm mb-2'; box.appendChild(h); let inputEl=null; if(!confirmOnly){ inputEl = document.createElement('textarea'); inputEl.className='w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3'; inputEl.value = content; box.appendChild(inputEl);} else { const p = document.createElement('p'); p.className='text-xs mb-3'; p.textContent = content; box.appendChild(p);} const btns = document.createElement('div'); btns.className='flex justify-end gap-2'; const cancel = document.createElement('button'); cancel.textContent='Cancelar'; cancel.className='px-3 py-1 bg-gray-700 rounded'; cancel.onclick = ()=> modal.remove(); const ok = document.createElement('button'); ok.textContent='Confirmar'; ok.className='px-3 py-1 bg-blue-600 rounded'; ok.onclick = async ()=>{ await onConfirm(inputEl?inputEl.value:''); modal.remove(); }; btns.append(cancel,ok); box.appendChild(btns); modal.appendChild(box); document.body.appendChild(modal); }
+
+// send
+sendBtn.addEventListener('click', async ()=>{ const text = input.value.trim(); if(!text) return; const userSnap = await get(ref(db, `users/${currentUserUid}`)); if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; } sendBtn.disabled = true; await push(messagesRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() }); input.value=''; sendBtn.disabled = false; });
+
+// admin check
+(async function(){ const snap = await get(ref(db, `admins/${currentUserUid}`)); if(snap.exists() && snap.val()===true) adminLink.classList.remove('hidden'); })();
 </script>
 </body>
 </html>

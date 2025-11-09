@@ -1,4 +1,3 @@
-<!-- register.html -->
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -21,86 +20,72 @@
     <div id="msg" class="mt-3 text-sm text-red-400"></div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-    import { getDatabase, ref, set, get, child, push } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-    // CONFIG: mesma config que usa no chat
-    const firebaseConfig = {
-      apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-      authDomain: "chat-firebase-efcbe.firebaseapp.com",
-      databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-      projectId: "chat-firebase-efcbe",
-      storageBucket: "chat-firebase-efcbe.firebasestorage.app",
-      messagingSenderId: "376919463932",
-      appId: "1:376919463932:web:4b2139df551d0a026ac479",
-      measurementId: "G-R14XVTJBFL"
-    };
+const firebaseConfig = {
+  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
+  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  "projectId": "chat-firebase-efcbe",
+  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
+  "messagingSenderId": "376919463932",
+  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
+  "measurementId": "G-R14XVTJBFL"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+signInAnonymously(auth).catch(()=>{});
 
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
+const uEl = document.getElementById('username');
+const pEl = document.getElementById('password');
+const btn = document.getElementById('btnRegister');
+const msg = document.getElementById('msg');
 
-    // garante conexão anônima (opcional para presença)
-    signInAnonymously(auth).catch(()=>{});
+async function hashPassword(username, password){
+  const enc = new TextEncoder();
+  const data = enc.encode(username.toLowerCase() + '::' + password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
+}
 
-    const uEl = document.getElementById('username');
-    const pEl = document.getElementById('password');
-    const btn = document.getElementById('btnRegister');
-    const msg = document.getElementById('msg');
+btn.addEventListener('click', async () => {
+  msg.textContent = '';
+  const username = uEl.value.trim();
+  const password = pEl.value;
+  if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
 
-    // helper: SHA-256 hashing (senha + username)
-    async function hashPassword(username, password){
-      const enc = new TextEncoder();
-      const data = enc.encode(username.toLowerCase() + '::' + password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
-    }
+  const unameKey = username.toLowerCase();
+  const usernamesRef = ref(db, `usernames/${unameKey}`);
+  const snap = await get(usernamesRef);
+  if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
 
-    btn.addEventListener('click', async () => {
-      msg.textContent = '';
-      const username = uEl.value.trim();
-      const password = pEl.value;
-      if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
+  const user = auth.currentUser;
+  if (!user) { msg.textContent = 'Erro: usuário não autenticado.'; return; }
+  const uid = user.uid;
+  const hash = await hashPassword(username, password);
 
-      // verifica disponibilidade /usernames/{lower}
-      const unameKey = username.toLowerCase();
-      const usernamesRef = ref(db, `usernames/${unameKey}`);
-      const snap = await get(usernamesRef);
-      if(snap.exists()){ msg.textContent = 'Nome já existe.'; return; }
-      const user = auth.currentUser;
-      if (!user) {
-        msg.textContent = 'Erro: usuário não autenticado.';
-        return;
-      }
-      const uid = user.uid;
-      const hash = await hashPassword(username, password);
+  const now = Date.now();
+  const userData = {
+    username,
+    passwordHash: hash,
+    createdAt: now,
+    isBanned: false,
+    friends: {},
+    lastSeen: now
+  };
 
+  await set(ref(db, `users/${uid}`), userData);
+  await set(ref(db, `usernames/${unameKey}`), uid);
 
-      // cria novo uid com push
-      
-
-      // grava usuário e mapeia username -> uid
-      const now = Date.now();
-      const userData = {
-        username,
-        passwordHash: hash,
-        createdAt: now,
-        isBanned: false,
-        friends: {},
-        lastSeen: now
-      };
-
-      await set(ref(db, `users/${uid}`), userData);
-      await set(ref(db, `usernames/${unameKey}`), uid);
-
-      // opcional: redireciona ao login
-      msg.style.color = 'lightgreen';
-      msg.textContent = 'Conta criada! Redirecionando...';
-      setTimeout(()=> location.href = 'index.html', 800);
-    });
-  </script>
+  msg.style.color = 'lightgreen';
+  msg.textContent = 'Conta criada! Redirecionando...';
+  setTimeout(()=> location.href = 'index.html', 800);
+});
+</script>
 </body>
 </html>

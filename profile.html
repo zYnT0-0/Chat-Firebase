@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Perfil</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-[#0d1117] text-[#c9d1d9] p-6">
+<h2 class="text-lg mb-3">Perfil</h2>
+<div id="info" class="bg-[#111318] p-4 rounded"></div>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+const firebaseConfig = {
+  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
+  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  "projectId": "chat-firebase-efcbe",
+  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
+  "messagingSenderId": "376919463932",
+  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
+  "measurementId": "G-R14XVTJBFL"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+signInAnonymously(auth).catch(()=>{});
+const uid = localStorage.getItem('chat_user_uid');
+if(!uid) location.href='index.html';
+(async function(){ const s = await get(ref(db, `users/${uid}`)); if(!s.exists()) return; const u = s.val(); document.getElementById('info').innerHTML = `<strong>${u.username}</strong><p>Online: (status not shown here)</p>`; })();
+</script>
+</body></html>
