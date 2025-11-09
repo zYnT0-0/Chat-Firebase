@@ -12,14 +12,14 @@
     --bg:#0d1117; --panel:#0f1418; --muted:#c9d1d9;
     --mine:#5865F2; --other:#2f3136;
   }
-  body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0}
-  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px}
-  .meta{font-size:12px; opacity:0.75; margin-bottom:6px; display:flex; gap:8px; align-items:center}
+  html,body{height:100%}
+  body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0; -webkit-font-smoothing:antialiased}
+  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3)}
+  .meta{font-size:12px; opacity:0.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
   .meta .who{font-weight:600}
   .meta .time{font-size:11px; opacity:0.6}
-  .actions{display:flex; gap:8px; margin-top:8px}
-  .small-btn{font-size:12px; padding:4px 8px; border-radius:8px}
-  /* animation */
+  .actions{display:flex; gap:8px; margin-top:8px; justify-content:flex-end}
+  .small-btn{font-size:12px; padding:6px 10px; border-radius:8px}
   @keyframes fadeIn{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
   .fade{animation:fadeIn .18s ease-out}
   /* responsive friends overlay */
@@ -27,26 +27,32 @@
   @media (max-width:760px){
     #friendsPanel{display:none}
     #friendsToggle{display:inline-flex}
-    #friendsOverlay{display:block; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:60; padding:12px; overflow:auto}
+    #friendsOverlay{display:none; position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:60; padding:12px; overflow:auto}
   }
   @media (min-width:761px){
     #friendsToggle{display:none}
     #friendsPanel{display:flex}
   }
   /* input area */
-  #messageInput{min-height:48px; max-height:160px; resize:none}
+  #messageInput{min-height:56px; max-height:180px; resize:none; width:100%}
   /* messages sizing: width greater than height typical */
   .msg-bubble{max-width:78%}
+  /* fix send button sizing */
+  .send-wrap{display:flex; flex-direction:column; gap:8px; align-items:flex-end}
+  /* smaller screens */
+  @media (max-width:420px){
+    .msg-bubble{max-width:90%}
+    #friendsPanel{display:none}
+  }
 </style>
 </head>
 <body class="flex flex-col h-screen">
 
-<!-- header -->
 <header class="bg-[#0f1418] p-3 flex items-center justify-between border-b border-gray-800">
   <div class="flex items-center gap-3">
     <button id="friendsToggle" class="text-sm px-2 py-1 bg-gray-800 rounded hidden">Amigos</button>
     <strong class="text-sm">Chat Anônimo</strong>
-    <div id="status" class="text-xs text-gray-400 ml-2">Conectando...</div>
+    <div id="status" class="text-xs text-gray-400 ml-3">Conectando...</div>
   </div>
 
   <div class="flex items-center gap-3">
@@ -59,23 +65,19 @@
   </div>
 </header>
 
-<!-- main area -->
 <div class="flex-1 flex overflow-hidden">
-  <!-- messages main column -->
   <main id="mainColumn" class="flex-1 flex flex-col">
-    <div id="messages" class="flex-1 overflow-auto p-4 space-y-3" style="background:#161b22"></div>
+    <div id="messages" class="flex-1 overflow-auto p-4 space-y-3 bg-[#161b22]"></div>
 
-    <!-- input -->
     <section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-3 items-start">
       <textarea id="messageInput" placeholder="Escreva..." class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" rows="2"></textarea>
-      <div class="flex flex-col gap-2">
+      <div class="send-wrap">
         <button id="sendBtn" class="bg-blue-600 px-4 py-2 rounded text-sm">Enviar</button>
         <div id="sendMode" class="text-xs text-gray-400">Modo: Global</div>
       </div>
     </section>
   </main>
 
-  <!-- friends panel (desktop) -->
   <aside id="friendsPanel" class="w-80 bg-[#0f1418] border-l border-gray-800 p-3 hidden md:flex flex-col">
     <input id="friendSearchDesktop" placeholder="Pesquisar usuários..." class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 text-sm mb-3" />
     <div id="recommendationsDesktop" class="space-y-2 mb-3"></div>
@@ -87,7 +89,7 @@
   </aside>
 </div>
 
-<!-- friends overlay (mobile) -->
+<!-- friends overlay mobile -->
 <div id="friendsOverlay" class="hidden">
   <div class="bg-[#0f1418] rounded p-3 h-full">
     <div class="flex gap-2 mb-3">
@@ -103,15 +105,8 @@
 </div>
 
 <script type="module">
-/* Chat completo: global + DMs + friends + requests + presence + edits
-   Requisitos:
-   - localStorage.chat_user_uid
-   - localStorage.chat_user_username
-   - Realtime DB rules configured (we discussed)
-*/
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 import {
   getDatabase, ref, push, onChildAdded, onChildChanged, onChildRemoved,
   get, set, update, onValue, remove
@@ -130,12 +125,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
-
-// session
-const currentUserUid = localStorage.getItem('chat_user_uid');
-let currentUsername = localStorage.getItem('chat_user_username') || 'Anônimo';
-if(!currentUserUid){ location.href = 'index.html'; }
 
 // UI refs
 const statusEl = document.getElementById('status');
@@ -160,6 +149,11 @@ const tabDM = document.getElementById('tabDM');
 const adminLink = document.getElementById('adminLink');
 const notifCountEl = document.getElementById('notifCount');
 
+let currentUserUid = localStorage.getItem('chat_user_uid') || null;
+let currentUsername = localStorage.getItem('chat_user_username') || 'Anônimo';
+let authUid = null; // actual firebase auth uid
+let currentRoomId = null; // null = global, otherwise private room id
+
 const markedParse = window.marked;
 
 // helpers
@@ -167,13 +161,15 @@ function renderMarkdown(md){
   const html = markedParse.parse(md || '');
   return DOMPurify.sanitize(html);
 }
-function timeStr(ts){
-  try{ return new Date(ts).toLocaleTimeString(); }catch(e){ return ''; }
-}
+function timeStr(ts){ try{ return new Date(ts).toLocaleTimeString(); }catch(e){ return ''; } }
+function logError(e){ console.error('CHAT ERROR', e); }
+
+// prepare DOM helpers for messages
 function createMessageElement(id, data, isPrivate=false){
   const wrapper = document.createElement('div');
   wrapper.className = 'fade flex';
   wrapper.style.justifyContent = (data.userId === currentUserUid) ? 'flex-end' : 'flex-start';
+  wrapper.dataset.msgId = id;
 
   const bubble = document.createElement('div');
   bubble.className = 'msg-bubble';
@@ -181,338 +177,380 @@ function createMessageElement(id, data, isPrivate=false){
   bubble.style.color = (data.userId === currentUserUid) ? 'white' : '#d6dbe3';
   bubble.style.maxWidth = '78%';
 
-  // header meta
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  const who = document.createElement('div');
-  who.className = 'who';
-  who.textContent = data.username || 'Anônimo';
-  const t = document.createElement('div');
-  t.className = 'time';
-  t.textContent = (data.timestamp) ? `• ${timeStr(data.timestamp)}` : '';
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const who = document.createElement('div'); who.className = 'who'; who.textContent = data.username || 'Anônimo';
+  const t = document.createElement('div'); t.className = 'time'; t.textContent = (data.timestamp ? `• ${timeStr(data.timestamp)}` : '');
   meta.appendChild(who); meta.appendChild(t);
 
-  const content = document.createElement('div');
-  content.className = 'content';
-  content.innerHTML = renderMarkdown(data.text);
+  const content = document.createElement('div'); content.className = 'content'; content.innerHTML = renderMarkdown(data.text || '');
 
   bubble.appendChild(meta);
   bubble.appendChild(content);
 
-  // actions only for author
-  if(data.userId === currentUserUid){
+  // actions only for author (client-side)
+  if (data.userId === currentUserUid){
     const actions = document.createElement('div');
     actions.className = 'actions';
-    const editBtn = document.createElement('button');
-    editBtn.className = 'small-btn text-xs text-gray-200';
-    editBtn.textContent = 'editar';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'small-btn text-xs text-red-400';
-    delBtn.textContent = 'apagar';
+    const editBtn = document.createElement('button'); editBtn.className = 'small-btn text-xs text-gray-200'; editBtn.textContent = 'editar';
+    const delBtn = document.createElement('button'); delBtn.className = 'small-btn text-xs text-red-400'; delBtn.textContent = 'apagar';
 
     editBtn.onclick = ()=> openModal('Editar mensagem', data.text, async (newText)=>{
       if(!newText.trim()) return;
       const path = isPrivate ? `privateMessages/${currentRoomId}/messages/${id}` : `messages/${id}`;
-      await update(ref(db, path), { text:newText, editedAt: Date.now() });
+      try{ await update(ref(db, path), { text:newText, editedAt: Date.now() }); }catch(e){ logError(e); }
     });
 
     delBtn.onclick = ()=> openModal('Apagar mensagem', 'Tem certeza?', async ()=>{
       const path = isPrivate ? `privateMessages/${currentRoomId}/messages/${id}` : `messages/${id}`;
-      await remove(ref(db, path));
+      try{ await remove(ref(db, path)); }catch(e){ logError(e); }
     }, true);
 
-    actions.appendChild(editBtn);
-    actions.appendChild(delBtn);
+    actions.appendChild(editBtn); actions.appendChild(delBtn);
     bubble.appendChild(actions);
   }
 
   wrapper.appendChild(bubble);
-  wrapper.dataset.msgId = id;
   return wrapper;
 }
 
-// modal
+// modal helper
 function openModal(title, content, onConfirm, confirmOnly=false){
   const modal = document.createElement('div');
-  Object.assign(modal.style, {position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:90});
-  const box = document.createElement('div');
-  Object.assign(box.style, {background:'#111318', padding:'14px', borderRadius:'8px', width:'92%', maxWidth:'420px'});
-  const h = document.createElement('h3'); h.textContent = title; h.className='text-sm mb-2'; box.appendChild(h);
+  Object.assign(modal.style,{position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:120});
+  const box = document.createElement('div'); Object.assign(box.style,{background:'#111318', padding:'14px', borderRadius:'8px', width:'92%', maxWidth:'420px'});
+  const h = document.createElement('h3'); h.textContent = title; h.className = 'text-sm mb-2'; box.appendChild(h);
   let inputEl = null;
   if(!confirmOnly){
-    inputEl = document.createElement('textarea');
-    inputEl.className = 'w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3';
-    inputEl.value = content || '';
+    inputEl = document.createElement('textarea'); inputEl.className = 'w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3'; inputEl.value = content || '';
     box.appendChild(inputEl);
   } else {
     const p = document.createElement('p'); p.className='text-xs mb-3'; p.textContent = content; box.appendChild(p);
   }
-  const row = document.createElement('div'); row.className = 'flex justify-end gap-2';
-  const bCancel = document.createElement('button'); bCancel.className='px-3 py-1 bg-gray-700 rounded'; bCancel.textContent='Cancelar';
+  const row = document.createElement('div'); row.className='flex justify-end gap-2';
+  const bCancel = document.createElement('button'); bCancel.className='px-3 py-1 bg-gray-700 rounded'; bCancel.textContent='Cancelar'; bCancel.onclick = ()=> modal.remove();
   const bOk = document.createElement('button'); bOk.className='px-3 py-1 bg-blue-600 rounded'; bOk.textContent='Confirmar';
-  bCancel.onclick = ()=> modal.remove();
-  bOk.onclick = async ()=>{
-    await onConfirm(inputEl ? inputEl.value : '');
-    modal.remove();
-  };
-  row.appendChild(bCancel); row.appendChild(bOk);
-  box.appendChild(row); modal.appendChild(box); document.body.appendChild(modal);
+  bOk.onclick = async ()=>{ await onConfirm(inputEl ? inputEl.value : ''); modal.remove(); };
+  row.appendChild(bCancel); row.appendChild(bOk); box.appendChild(row); modal.appendChild(box); document.body.appendChild(modal);
 }
 
-// presence
-onValue(ref(db, '.info/connected'), snap=>{
-  if(snap.val()===true){
-    set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() });
-    // ensure offline on unload
-    window.addEventListener('beforeunload', ()=> {
-      try{ set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() }); }catch(e){}
-    });
-    statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-  } else {
-    statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
-  }
-});
+// SESSION & AUTH HANDLING
+async function ensureAuth(){
+  return new Promise((resolve) => {
+    // if SDK already has user, resolve immediately
+    if (auth.currentUser){
+      authUid = auth.currentUser.uid;
+      resolve(auth.currentUser);
+      return;
+    }
 
-// admin link
-(async function(){
-  const s = await get(ref(db, `admins/${currentUserUid}`));
-  if(s.exists() && s.val()===true) adminLink.classList.remove('hidden');
+    // else listen for auth state and also trigger anonymous sign-in if needed
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user){
+        authUid = user.uid;
+        unsub();
+        resolve(user);
+      }
+    });
+
+    // ensure there's an anonymous sign-in (only if not signed in)
+    // if user already had local persistence, this will be no-op
+    signInAnonymously(auth).catch((e)=>{ console.warn('signInAnonymously failed', e); });
+  });
+}
+
+// MESSAGES: showing existing then listening for new ones
+let displayed = new Set();
+
+async function loadAndListenGlobal(){
+  try {
+    const refGlobal = ref(db, 'messages');
+    // initial load (existing messages)
+    const snap = await get(refGlobal);
+    messagesEl.innerHTML = '';
+    displayed.clear();
+    if (snap.exists()){
+      const data = snap.val();
+      const keys = Object.keys(data);
+      // sort by timestamp if present
+      keys.sort((a,b)=>{
+        const ta = data[a].timestamp || 0;
+        const tb = data[b].timestamp || 0;
+        return ta - tb;
+      });
+      for(const k of keys){
+        displayed.add(k);
+        messagesEl.appendChild(createMessageElement(k, data[k], false));
+      }
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // now listen for new messages (will fire for new additions)
+    onChildAdded(refGlobal, (s) => {
+      const id = s.key;
+      if(displayed.has(id)) return;
+      displayed.add(id);
+      const node = createMessageElement(id, s.val(), false);
+      messagesEl.appendChild(node);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+
+    // change listener
+    onChildChanged(refGlobal, (s)=>{
+      const id = s.key;
+      const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+      if(n){
+        const newNode = createMessageElement(id, s.val(), false);
+        n.replaceWith(newNode);
+      }
+    });
+
+    onChildRemoved(refGlobal, (s)=>{
+      const id = s.key;
+      const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+      if(n) n.remove();
+      displayed.delete(id);
+    });
+
+  } catch(e){ logError(e); }
+}
+
+// PRIVATE message listeners (for current room)
+async function listenPrivate(roomId){
+  const msgsRef = ref(db, `privateMessages/${roomId}/messages`);
+  // initial load
+  const snap = await get(msgsRef);
+  messagesEl.innerHTML = '';
+  if(snap.exists()){
+    const data = snap.val();
+    const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
+    for(const k of keys) messagesEl.appendChild(createMessageElement(k, data[k], true));
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+  // child added
+  onChildAdded(msgsRef, s => {
+    // avoid duplication if same
+    const id = s.key;
+    if(messagesEl.querySelector(`[data-msg-id="${id}"]`)) return;
+    messagesEl.appendChild(createMessageElement(id, s.val(), true));
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  });
+  onChildChanged(msgsRef, s=>{
+    const id = s.key;
+    const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+    if(n) n.replaceWith(createMessageElement(id, s.val(), true));
+  });
+  onChildRemoved(msgsRef, s=>{
+    const id = s.key;
+    const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+    if(n) n.remove();
+  });
+}
+
+// UTIL: deterministic room id (sorted uids)
+function roomIdFor(a,b){ return [a,b].sort().join('_'); }
+
+// Ensure auth then start app
+(async function bootstrap(){
+  try {
+    // ensure local session info exists
+    if(!currentUserUid){
+      // if no local user, try to use auth currentUser (if anonymous persisted)
+      if(auth.currentUser && auth.currentUser.uid) currentUserUid = auth.currentUser.uid;
+      else {
+        // we expect register/login to set localStorage; if not present, try signInAnonymously and set uid to auth.uid
+        await ensureAuth();
+        // if app has no localStorage uid, set to auth uid (this is fallback; ideally user should register)
+        if(!currentUserUid && auth.currentUser) {
+          currentUserUid = auth.currentUser.uid;
+          localStorage.setItem('chat_user_uid', currentUserUid);
+          localStorage.setItem('chat_user_username', currentUsername);
+        }
+      }
+    } else {
+      // there is a localStorage uid — ensure auth exists
+      const user = await ensureAuth();
+      // if authUid differs from stored uid, log a warning (this can happen if auth was created anew)
+      if(user && user.uid !== currentUserUid){
+        console.warn('auth.uid differs from stored uid. For best security the stored account should match the authenticated user. auth.uid=', user.uid, 'stored uid=', currentUserUid);
+        // still proceed using stored uid for display, but DB writes that require auth.uid to match may fail — prefer to re-authenticate user in future steps.
+      }
+    }
+
+    // update status text now that auth ready
+    statusEl.textContent = 'Carregando...';
+
+    // start global messages
+    await loadAndListenGlobal();
+
+    // update presence: .info/connected listener
+    onValue(ref(db,'.info/connected'), snap=>{
+      if(snap.val() === true){
+        try{ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); }catch(e){ }
+        statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
+        window.addEventListener('beforeunload', ()=> {
+          try{ set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() }); }catch(e){}
+        });
+      } else {
+        statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
+      }
+    });
+
+    // admin link
+    (async ()=>{
+      try{
+        const a = await get(ref(db, `admins/${currentUserUid}`));
+        if(a.exists() && a.val() === true) adminLink.classList.remove('hidden');
+      }catch(e){ logError(e); }
+    })();
+
+    // watch for friend requests count
+    onValue(ref(db, `friendRequests/${currentUserUid}`), snap=>{
+      const val = snap.exists() ? Object.keys(snap.val()).length : 0;
+      notifCountEl.textContent = val;
+    });
+
+    statusEl.textContent = 'Pronto';
+
+  } catch(e){ logError(e); statusEl.textContent = 'Erro'; }
 })();
 
-// GLOBAL messages listeners
-const globalRef = ref(db, 'messages');
-const displayedGlobal = new Set();
-
-function appendGlobalMessage(id, data){
-  if(displayedGlobal.has(id)) return;
-  displayedGlobal.add(id);
-  const node = createMessageElement(id, data, false);
-  node.classList.add('fade');
-  messagesEl.appendChild(node);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-onChildAdded(globalRef, snap=>{
-  appendGlobalMessage(snap.key, snap.val());
-});
-onChildChanged(globalRef, snap=>{
-  // replace message in DOM
-  rebuildGlobalMessages();
-});
-onChildRemoved(globalRef, snap=>{ rebuildGlobalMessages(); });
-
-async function rebuildGlobalMessages(){
-  messagesEl.innerHTML = '';
-  displayedGlobal.clear();
-  const s = await get(globalRef);
-  if(!s.exists()) return;
-  const msgs = s.val();
-  Object.keys(msgs).forEach(k=>{
-    displayedGlobal.add(k);
-    messagesEl.appendChild(createMessageElement(k, msgs[k], false));
-  });
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-// PRIVATE chat support
-let currentRoomId = null; // chatId 'uidA_uidB' sorted
-let privateListeners = { added:null, changed:null, removed:null };
-
-function roomIdFor(u1, u2){
-  const arr = [u1, u2].sort();
-  return `${arr[0]}_${arr[1]}`;
-}
-async function ensurePrivateRoom(u1,u2){
-  const id = roomIdFor(u1,u2);
-  const roomRef = ref(db, `privateMessages/${id}`);
-  const snap = await get(roomRef);
-  if(!snap.exists()){
-    // create participants node for rules
-    await set(ref(db, `privateMessages/${id}/participants/${u1}`), true);
-    await set(ref(db, `privateMessages/${id}/participants/${u2}`), true);
+// FRIENDS UI and search
+friendsToggle.onclick = ()=> {
+  if(window.innerWidth <= 760){
+    friendsOverlay.classList.toggle('hidden');
+    friendsOverlay.style.display = friendsOverlay.classList.contains('hidden') ? 'none' : 'block';
   } else {
-    // ensure participants exist
-    await set(ref(db, `privateMessages/${id}/participants/${u1}`), true);
-    await set(ref(db, `privateMessages/${id}/participants/${u2}`), true);
+    friendsPanel.classList.toggle('hidden');
   }
-  return id;
-}
+};
+closeFriends.onclick = ()=> { friendsOverlay.classList.add('hidden'); friendsOverlay.style.display = 'none'; };
 
-async function openPrivateRoomWith(uid, username){
-  currentRoomId = await ensurePrivateRoom(currentUserUid, uid);
-  // switch to DM tab
-  tabDM.click();
-  // load messages of room
-  await rebuildPrivateMessages(currentRoomId);
-  sendModeEl.textContent = `Modo: DM (${username})`;
-}
-
-// private messages functions
-async function rebuildPrivateMessages(roomId){
-  // remove any existing listeners
-  if(privateListeners.added) privateListeners.added(); // no-op since modular doesn't return unsubscribe here; we will just rebuild
-  const msgsRef = ref(db, `privateMessages/${roomId}/messages`);
-  const s = await get(msgsRef);
-  messagesEl.innerHTML = '';
-  if(!s.exists()) return;
-  const msgs = s.val();
-  Object.keys(msgs).forEach(k=>{
-    messagesEl.appendChild(createMessageElement(k, msgs[k], true));
-  });
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-// send handler (global or private depending on currentRoomId)
-sendBtn.addEventListener('click', async ()=>{
-  const text = messageInput.value.trim();
-  if(!text) return;
-  // check ban
-  const userSnap = await get(ref(db, `users/${currentUserUid}`));
-  if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
-
-  if(currentRoomId){
-    // private
-    const msgsRef = ref(db, `privateMessages/${currentRoomId}/messages`);
-    await push(msgsRef, { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
-  } else {
-    // global
-    await push(ref(db, 'messages'), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
-  }
-  messageInput.value = '';
-});
-
-// FRIENDS: load friends list
+// load friends areas
 async function loadFriendsUI(){
-  // desktop and mobile areas
-  friendsArea.innerHTML = ''; friendsAreaDesktop.innerHTML = '';
-  const s = await get(ref(db, `users/${currentUserUid}/friends`));
-  if(!s.exists()) return;
-  const f = s.val();
-  for(const uid of Object.keys(f)){
-    const name = f[uid].username || uid;
-    const btn = document.createElement('button');
-    btn.className = 'w-full text-left px-3 py-2 bg-gray-800 rounded';
-    btn.textContent = name;
-    btn.onclick = ()=> openPrivateRoomWith(uid, name);
-    friendsArea.appendChild(btn);
-    const btn2 = btn.cloneNode(true);
-    btn2.onclick = btn.onclick;
-    friendsAreaDesktop.appendChild(btn2);
-  }
+  try{
+    const s = await get(ref(db, `users/${currentUserUid}/friends`));
+    friendsArea.innerHTML = ''; friendsAreaDesktop.innerHTML = '';
+    if(!s.exists()) return;
+    const f = s.val();
+    for(const uid of Object.keys(f)){
+      const name = f[uid].username || uid;
+      const btn = document.createElement('button');
+      btn.className = 'w-full text-left px-3 py-2 bg-gray-800 rounded';
+      btn.textContent = name;
+      btn.onclick = ()=> openPrivateWith(uid, name);
+      friendsArea.appendChild(btn);
+      const clone = btn.cloneNode(true); clone.onclick = btn.onclick; friendsAreaDesktop.appendChild(clone);
+    }
+  }catch(e){ logError(e); }
 }
 loadFriendsUI();
+onValue(ref(db, `users/${currentUserUid}/friends`), ()=> loadFriendsUI());
 
-// SEARCH & RECOMMENDATIONS
+// search recommendations
 async function searchRecommendations(q, outEl){
   outEl.innerHTML = '';
   if(!q) return;
-  const snap = await get(ref(db, 'usernames'));
-  if(!snap.exists()) return;
-  const all = snap.val();
-  // show up to some results; ignore current user's username
-  let added=0;
-  for(const unameKey of Object.keys(all)){
-    if(added>10) break;
-    if(unameKey.includes(q.toLowerCase())){
-      const uid = all[unameKey];
-      if(uid === currentUserUid) continue; // ignore self
-      const userSnap = await get(ref(db, `users/${uid}`));
-      if(!userSnap.exists()) continue;
-      const user = userSnap.val();
-      const row = document.createElement('div');
-      row.className = 'p-2 bg-[#111318] rounded flex justify-between items-center';
-      const name = document.createElement('div'); name.textContent = user.username;
-      const addBtn = document.createElement('button'); addBtn.textContent = 'Adicionar'; addBtn.className = 'small-btn bg-blue-600 text-white';
-      addBtn.onclick = async ()=>{
-        // send friend request: /friendRequests/{toUid}/{fromUid} = {username, from}
-        await set(ref(db, `friendRequests/${uid}/${currentUserUid}`), { username: currentUsername, from: currentUserUid, at: Date.now() });
-        addBtn.textContent = 'Enviado';
-      };
-      row.appendChild(name); row.appendChild(addBtn);
-      outEl.appendChild(row);
-      added++;
+  try{
+    const snap = await get(ref(db,'usernames'));
+    if(!snap.exists()) return;
+    const all = snap.val();
+    let added = 0;
+    for(const key of Object.keys(all)){
+      if(added >= 10) break;
+      if(key.includes(q.toLowerCase())){
+        const uid = all[key];
+        if(uid === currentUserUid) continue; // ignore self
+        const userSnap = await get(ref(db, `users/${uid}`));
+        if(!userSnap.exists()) continue;
+        const user = userSnap.val();
+        const row = document.createElement('div'); row.className = 'p-2 bg-[#111318] rounded flex justify-between items-center';
+        const name = document.createElement('div'); name.textContent = user.username;
+        // clicking name fills search input
+        name.style.cursor = 'pointer';
+        name.onclick = ()=>{
+           // fill both inputs if present
+          if(outEl === recommendations) friendSearch.value = user.username;
+          if(outEl === recommendationsDesktop) friendSearchDesktop.value = user.username;
+        };
+        const addBtn = document.createElement('button'); addBtn.textContent = 'Adicionar'; addBtn.className = 'small-btn bg-blue-600 text-white';
+        addBtn.onclick = async ()=>{
+          try{
+            await set(ref(db, `friendRequests/${uid}/${currentUserUid}`), { username: currentUsername, from: currentUserUid, at: Date.now() });
+            addBtn.textContent = 'Enviado';
+          }catch(e){ logError(e); addBtn.textContent = 'Erro'; }
+        };
+        row.appendChild(name); row.appendChild(addBtn);
+        outEl.appendChild(row);
+        added++;
+      }
     }
-  }
+  }catch(e){ logError(e); }
 }
 
-// wire search inputs
 friendSearch.addEventListener('input', (e)=> searchRecommendations(e.target.value, recommendations));
 friendSearchDesktop.addEventListener('input', (e)=> searchRecommendations(e.target.value, recommendationsDesktop));
 
-// friendsOverlay toggle
-friendsToggle.onclick = ()=> { friendsOverlay.classList.toggle('hidden'); friendsOverlay.style.display = friendsOverlay.classList.contains('hidden') ? 'none' : 'block'; };
-closeFriends.onclick = ()=> { friendsOverlay.classList.add('hidden'); friendsOverlay.style.display = 'none'; };
-
-// Friend requests notifications (listen to incoming requests)
-onChildAdded(ref(db, `friendRequests/${currentUserUid}`), snap=>{
-  // increase notif count
-  const count = parseInt(notifCountEl.textContent||'0',10) + 1;
-  notifCountEl.textContent = count;
-});
-
-// Accept friend request logic (not a full UI here, but available via admin/profile)
-// When accepting, both users get added under /users/{uid}/friends/{friendUid} with username
-
-// TABS: Global / DM
-tabGlobal.onclick = async ()=>{
-  currentRoomId = null;
-  sendModeEl.textContent = 'Modo: Global';
-  // show global messages: rebuild
-  await rebuildGlobalMessages();
-};
-tabDM.onclick = async ()=>{
-  // start with empty DM view: show friends list or prompt
-  messagesEl.innerHTML = '<div class="text-gray-400">Selecione um amigo para abrir DM.</div>';
-  sendModeEl.textContent = 'Modo: DM (nenhum)';
-};
-
-// initial load: global
-tabGlobal.click();
-
-// handle live updates for changes/removals on globals handled above rebuild functions
-
-// listen for changes in messages and reflect in DOM (optimized)
-onChildChanged(ref(db,'messages'), snap=>{
-  // replace existing node if present
-  const id = snap.key;
-  const nodes = messagesEl.querySelectorAll('[data-msg-id]');
-  for(const n of nodes){
-    if(n.dataset.msgId === id){
-      const newNode = createMessageElement(id, snap.val(), false);
-      n.replaceWith(newNode);
-      return;
+// open private chat with friend
+async function openPrivateWith(uid, username){
+  try{
+    const id = roomIdFor(currentUserUid, uid);
+    // ensure room exists + participants entries for rules
+    const roomRef = ref(db, `privateMessages/${id}/participants`);
+    const snap = await get(roomRef);
+    if(!snap.exists()){
+      await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
+      await set(ref(db, `privateMessages/${id}/participants/${uid}`), true);
     }
-  }
-});
-onChildRemoved(ref(db,'messages'), snap=>{
-  const id = snap.key;
-  const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
-  if(n) n.remove();
-});
-
-// Rebuild friends periodically or on events
-onValue(ref(db, `users/${currentUserUid}/friends`), snap=> loadFriendsUI());
-
-// Also watch status changes to show online in friends list (optional)
-onValue(ref(db, 'status'), snap=>{
-  // could update small badges next to friends in lists (left as exercise)
-});
-
-// quick utility: accept friend request if desired (example):
-async function acceptFriendRequest(fromUid){
-  // add both ways
-  const fromSnap = await get(ref(db, `users/${fromUid}`));
-  if(!fromSnap.exists()) return;
-  const fromName = fromSnap.val().username;
-  await set(ref(db, `users/${currentUserUid}/friends/${fromUid}`), { username: fromName, addedAt: Date.now() });
-  await set(ref(db, `users/${fromUid}/friends/${currentUserUid}`), { username: currentUsername, addedAt: Date.now() });
-  // remove the friendRequest
-  await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`));
-  notifCountEl.textContent = Math.max(0, parseInt(notifCountEl.textContent||'0',10) - 1);
-  loadFriendsUI();
+    currentRoomId = id;
+    sendModeEl.textContent = `Modo: DM (${username})`;
+    await listenPrivate(id);
+    // switch tab UI
+    tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800');
+  }catch(e){ logError(e); }
 }
 
-// Expose acceptFriendRequest for console/testing (or later add UI)
+// send handler
+sendBtn.addEventListener('click', async ()=>{
+  const text = messageInput.value.trim();
+  if(!text) return;
+  try{
+    // check ban
+    const userSnap = await get(ref(db, `users/${currentUserUid}`));
+    if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
+
+    if(currentRoomId){
+      await push(ref(db, `privateMessages/${currentRoomId}/messages`), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
+    } else {
+      await push(ref(db, 'messages'), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
+    }
+    messageInput.value = '';
+  }catch(e){ logError(e); alert('Erro ao enviar'); }
+});
+
+// TABS
+tabGlobal.addEventListener('click', async ()=>{
+  currentRoomId = null;
+  sendModeEl.textContent = 'Modo: Global';
+  tabGlobal.classList.add('bg-gray-800'); tabDM.classList.remove('bg-gray-800');
+  await loadAndListenGlobal();
+});
+tabDM.addEventListener('click', ()=>{ tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800'); messagesEl.innerHTML = '<div class="text-gray-400">Selecione um amigo para abrir DM.</div>'; });
+
+// react to changes in global messages already handled by listeners
+
+// utility: accept friend request (example function, UI not added yet)
+async function acceptFriendRequest(fromUid){
+  try{
+    const fromSnap = await get(ref(db, `users/${fromUid}`));
+    if(!fromSnap.exists()) return;
+    const fromName = fromSnap.val().username || fromUid;
+    await set(ref(db, `users/${currentUserUid}/friends/${fromUid}`), { username: fromName, addedAt: Date.now() });
+    await set(ref(db, `users/${fromUid}/friends/${currentUserUid}`), { username: currentUsername, addedAt: Date.now() });
+    await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`));
+    loadFriendsUI();
+  }catch(e){ logError(e); }
+}
+// expose for convenience
 window.acceptFriendRequest = acceptFriendRequest;
 
 </script>
