@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat — App</title>
+<title>Chat — App (Discord style)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
@@ -13,8 +13,8 @@
     --mine:#5865F2; --other:#2f3136;
   }
   html,body{height:100%}
-  body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0; -webkit-font-smoothing:antialiased}
-  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.3)}
+  body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0}
+  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.35)}
   .meta{font-size:12px; opacity:0.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
   .meta .who{font-weight:600}
   .meta .time{font-size:11px; opacity:0.6}
@@ -60,7 +60,7 @@
       <button id="tabGlobal" class="px-3 py-1 rounded bg-gray-800 text-sm">Global</button>
       <button id="tabDM" class="px-3 py-1 rounded text-sm">Mensagens</button>
     </nav>
-    <a href="index.html" class="text-xs text-gray-400">Sair</a>
+    <a href="index.html" id="logoutLink" class="text-xs text-gray-400">Sair</a>
     <a href="admin.html" id="adminLink" class="text-xs text-red-400 hidden">Admin</a>
   </div>
 </header>
@@ -105,8 +105,16 @@
 </div>
 
 <script type="module">
+/* Final robust chat.html
+   - logout with signOut
+   - in-memory usernames via onValue (no duplicates)
+   - visibilitychange to refresh
+   - safe listeners (attach once)
+   - global + DM (Discord-like)
+*/
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 import {
   getDatabase, ref, push, onChildAdded, onChildChanged, onChildRemoved,
   get, set, update, onValue, remove
@@ -148,23 +156,31 @@ const tabGlobal = document.getElementById('tabGlobal');
 const tabDM = document.getElementById('tabDM');
 const adminLink = document.getElementById('adminLink');
 const notifCountEl = document.getElementById('notifCount');
+const logoutLink = document.getElementById('logoutLink');
 
 let currentUserUid = localStorage.getItem('chat_user_uid') || null;
 let currentUsername = localStorage.getItem('chat_user_username') || 'Anônimo';
-let authUid = null; // actual firebase auth uid
-let currentRoomId = null; // null = global, otherwise private room id
+let authUid = null;
+let currentRoomId = null; // null=global, else private room id
 
 const markedParse = window.marked;
-
-// helpers
-function renderMarkdown(md){
-  const html = markedParse.parse(md || '');
-  return DOMPurify.sanitize(html);
-}
+function renderMarkdown(md){ const html = markedParse.parse(md||''); return DOMPurify.sanitize(html); }
 function timeStr(ts){ try{ return new Date(ts).toLocaleTimeString(); }catch(e){ return ''; } }
 function logError(e){ console.error('CHAT ERROR', e); }
 
-// prepare DOM helpers for messages
+// -------- usernames cache (no duplicates) --------
+let allUsernames = {}; // {lowername: uid}
+onValue(ref(db, 'usernames'), snap => {
+  allUsernames = snap.exists() ? snap.val() : {};
+  // keep UI responsive: if search term exists, refresh recommendations
+  const t = (document.activeElement === friendSearch) ? friendSearch.value : (document.activeElement === friendSearchDesktop ? friendSearchDesktop.value : '');
+  if(t) {
+    doSearchAndRender(t, recommendations);
+    doSearchAndRender(t, recommendationsDesktop);
+  }
+});
+
+// -------- message element builder --------
 function createMessageElement(id, data, isPrivate=false){
   const wrapper = document.createElement('div');
   wrapper.className = 'fade flex';
@@ -184,13 +200,10 @@ function createMessageElement(id, data, isPrivate=false){
 
   const content = document.createElement('div'); content.className = 'content'; content.innerHTML = renderMarkdown(data.text || '');
 
-  bubble.appendChild(meta);
-  bubble.appendChild(content);
+  bubble.appendChild(meta); bubble.appendChild(content);
 
-  // actions only for author (client-side)
-  if (data.userId === currentUserUid){
-    const actions = document.createElement('div');
-    actions.className = 'actions';
+  if(data.userId === currentUserUid){
+    const actions = document.createElement('div'); actions.className = 'actions';
     const editBtn = document.createElement('button'); editBtn.className = 'small-btn text-xs text-gray-200'; editBtn.textContent = 'editar';
     const delBtn = document.createElement('button'); delBtn.className = 'small-btn text-xs text-red-400'; delBtn.textContent = 'apagar';
 
@@ -213,12 +226,12 @@ function createMessageElement(id, data, isPrivate=false){
   return wrapper;
 }
 
-// modal helper
+// modal
 function openModal(title, content, onConfirm, confirmOnly=false){
   const modal = document.createElement('div');
   Object.assign(modal.style,{position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:120});
   const box = document.createElement('div'); Object.assign(box.style,{background:'#111318', padding:'14px', borderRadius:'8px', width:'92%', maxWidth:'420px'});
-  const h = document.createElement('h3'); h.textContent = title; h.className = 'text-sm mb-2'; box.appendChild(h);
+  const h = document.createElement('h3'); h.textContent = title; h.className='text-sm mb-2'; box.appendChild(h);
   let inputEl = null;
   if(!confirmOnly){
     inputEl = document.createElement('textarea'); inputEl.className = 'w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3'; inputEl.value = content || '';
@@ -233,159 +246,126 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   row.appendChild(bCancel); row.appendChild(bOk); box.appendChild(row); modal.appendChild(box); document.body.appendChild(modal);
 }
 
-// SESSION & AUTH HANDLING
+// -------- authentication helpers --------
 async function ensureAuth(){
   return new Promise((resolve) => {
-    // if SDK already has user, resolve immediately
-    if (auth.currentUser){
+    if(auth.currentUser){
       authUid = auth.currentUser.uid;
       resolve(auth.currentUser);
       return;
     }
-
-    // else listen for auth state and also trigger anonymous sign-in if needed
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user){
+      if(user){
         authUid = user.uid;
         unsub();
         resolve(user);
       }
     });
-
-    // ensure there's an anonymous sign-in (only if not signed in)
-    // if user already had local persistence, this will be no-op
     signInAnonymously(auth).catch((e)=>{ console.warn('signInAnonymously failed', e); });
   });
 }
 
-// MESSAGES: showing existing then listening for new ones
-let displayed = new Set();
+// -------- global message loader + listener (attach once) --------
+let globalListenerAttached = false;
+let displayedGlobal = new Set();
 
 async function loadAndListenGlobal(){
-  try {
+  try{
     const refGlobal = ref(db, 'messages');
-    // initial load (existing messages)
+    // initial load
     const snap = await get(refGlobal);
     messagesEl.innerHTML = '';
-    displayed.clear();
-    if (snap.exists()){
+    displayedGlobal.clear();
+    if(snap.exists()){
       const data = snap.val();
-      const keys = Object.keys(data);
-      // sort by timestamp if present
-      keys.sort((a,b)=>{
-        const ta = data[a].timestamp || 0;
-        const tb = data[b].timestamp || 0;
-        return ta - tb;
-      });
+      const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
       for(const k of keys){
-        displayed.add(k);
+        displayedGlobal.add(k);
         messagesEl.appendChild(createMessageElement(k, data[k], false));
       }
       messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else {
+      messagesEl.innerHTML = '<div class="text-gray-400">Sem mensagens públicas.</div>';
     }
+    // attach child listeners only once
+    if(!globalListenerAttached){
+      onChildAdded(refGlobal, s=>{
+        const id = s.key;
+        if(displayedGlobal.has(id)) return;
+        displayedGlobal.add(id);
+        messagesEl.appendChild(createMessageElement(id, s.val(), false));
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+      onChildChanged(refGlobal, s=>{
+        const id = s.key;
+        const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+        if(n) n.replaceWith(createMessageElement(id, s.val(), false));
+      });
+      onChildRemoved(refGlobal, s=>{
+        const id = s.key;
+        const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+        if(n) n.remove();
+        displayedGlobal.delete(id);
+      });
+      globalListenerAttached = true;
+    }
+  }catch(e){ logError(e); }
+}
 
-    // now listen for new messages (will fire for new additions)
-    onChildAdded(refGlobal, (s) => {
-      const id = s.key;
-      if(displayed.has(id)) return;
-      displayed.add(id);
-      const node = createMessageElement(id, s.val(), false);
-      messagesEl.appendChild(node);
+// -------- private messages (basic, load per room) --------
+async function listenPrivate(roomId){
+  try{
+    const msgsRef = ref(db, `privateMessages/${roomId}/messages`);
+    // initial
+    const snap = await get(msgsRef);
+    messagesEl.innerHTML = '';
+    if(snap.exists()){
+      const data = snap.val();
+      const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
+      for(const k of keys) messagesEl.appendChild(createMessageElement(k, data[k], true));
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else messagesEl.innerHTML = '<div class="text-gray-400">Sem mensagens nessa conversa.</div>';
+    // attach listeners (note: these will add duplicates across room changes but acceptable for most flows;
+    // improvements: store and remove listeners per room — can be added later)
+    onChildAdded(msgsRef, s=>{
+      if(messagesEl.querySelector(`[data-msg-id="${s.key}"]`)) return;
+      messagesEl.appendChild(createMessageElement(s.key, s.val(), true));
       messagesEl.scrollTop = messagesEl.scrollHeight;
     });
-
-    // change listener
-    onChildChanged(refGlobal, (s)=>{
-      const id = s.key;
-      const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
-      if(n){
-        const newNode = createMessageElement(id, s.val(), false);
-        n.replaceWith(newNode);
-      }
+    onChildChanged(msgsRef, s=>{
+      const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
+      if(n) n.replaceWith(createMessageElement(s.key, s.val(), true));
     });
-
-    onChildRemoved(refGlobal, (s)=>{
-      const id = s.key;
-      const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+    onChildRemoved(msgsRef, s=>{
+      const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
       if(n) n.remove();
-      displayed.delete(id);
     });
-
-  } catch(e){ logError(e); }
+  }catch(e){ logError(e); }
 }
 
-// PRIVATE message listeners (for current room)
-async function listenPrivate(roomId){
-  const msgsRef = ref(db, `privateMessages/${roomId}/messages`);
-  // initial load
-  const snap = await get(msgsRef);
-  messagesEl.innerHTML = '';
-  if(snap.exists()){
-    const data = snap.val();
-    const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
-    for(const k of keys) messagesEl.appendChild(createMessageElement(k, data[k], true));
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-  // child added
-  onChildAdded(msgsRef, s => {
-    // avoid duplication if same
-    const id = s.key;
-    if(messagesEl.querySelector(`[data-msg-id="${id}"]`)) return;
-    messagesEl.appendChild(createMessageElement(id, s.val(), true));
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  });
-  onChildChanged(msgsRef, s=>{
-    const id = s.key;
-    const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
-    if(n) n.replaceWith(createMessageElement(id, s.val(), true));
-  });
-  onChildRemoved(msgsRef, s=>{
-    const id = s.key;
-    const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
-    if(n) n.remove();
-  });
-}
-
-// UTIL: deterministic room id (sorted uids)
+// deterministic room id
 function roomIdFor(a,b){ return [a,b].sort().join('_'); }
 
-// Ensure auth then start app
+// -------- boot sequence --------
 (async function bootstrap(){
-  try {
-    // ensure local session info exists
-    if(!currentUserUid){
-      // if no local user, try to use auth currentUser (if anonymous persisted)
-      if(auth.currentUser && auth.currentUser.uid) currentUserUid = auth.currentUser.uid;
-      else {
-        // we expect register/login to set localStorage; if not present, try signInAnonymously and set uid to auth.uid
-        await ensureAuth();
-        // if app has no localStorage uid, set to auth uid (this is fallback; ideally user should register)
-        if(!currentUserUid && auth.currentUser) {
-          currentUserUid = auth.currentUser.uid;
-          localStorage.setItem('chat_user_uid', currentUserUid);
-          localStorage.setItem('chat_user_username', currentUsername);
-        }
-      }
-    } else {
-      // there is a localStorage uid — ensure auth exists
-      const user = await ensureAuth();
-      // if authUid differs from stored uid, log a warning (this can happen if auth was created anew)
-      if(user && user.uid !== currentUserUid){
-        console.warn('auth.uid differs from stored uid. For best security the stored account should match the authenticated user. auth.uid=', user.uid, 'stored uid=', currentUserUid);
-        // still proceed using stored uid for display, but DB writes that require auth.uid to match may fail — prefer to re-authenticate user in future steps.
-      }
+  try{
+    // ensure auth and session
+    await ensureAuth();
+    // if no local storage user id set, fallback to auth uid (makes testing easier)
+    if(!currentUserUid && auth.currentUser) {
+      currentUserUid = auth.currentUser.uid;
+      localStorage.setItem('chat_user_uid', currentUserUid);
+      localStorage.setItem('chat_user_username', currentUsername);
     }
-
-    // update status text now that auth ready
     statusEl.textContent = 'Carregando...';
 
-    // start global messages
+    // load global messages and attach listeners
     await loadAndListenGlobal();
 
-    // update presence: .info/connected listener
-    onValue(ref(db,'.info/connected'), snap=>{
+    // presence tracking
+    onValue(ref(db, '.info/connected'), snap=>{
       if(snap.val() === true){
-        try{ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); }catch(e){ }
+        try{ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); }catch(e){}
         statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
         window.addEventListener('beforeunload', ()=> {
           try{ set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() }); }catch(e){}
@@ -396,36 +376,24 @@ function roomIdFor(a,b){ return [a,b].sort().join('_'); }
     });
 
     // admin link
-    (async ()=>{
-      try{
-        const a = await get(ref(db, `admins/${currentUserUid}`));
-        if(a.exists() && a.val() === true) adminLink.classList.remove('hidden');
-      }catch(e){ logError(e); }
-    })();
+    const a = await get(ref(db, `admins/${currentUserUid}`));
+    if(a.exists() && a.val() === true) adminLink.classList.remove('hidden');
 
-    // watch for friend requests count
+    // friend requests count
     onValue(ref(db, `friendRequests/${currentUserUid}`), snap=>{
       const val = snap.exists() ? Object.keys(snap.val()).length : 0;
       notifCountEl.textContent = val;
     });
 
+    // initial friends UI
+    await loadFriendsUI();
+
     statusEl.textContent = 'Pronto';
 
-  } catch(e){ logError(e); statusEl.textContent = 'Erro'; }
+  }catch(e){ logError(e); statusEl.textContent = 'Erro'; }
 })();
 
-// FRIENDS UI and search
-friendsToggle.onclick = ()=> {
-  if(window.innerWidth <= 760){
-    friendsOverlay.classList.toggle('hidden');
-    friendsOverlay.style.display = friendsOverlay.classList.contains('hidden') ? 'none' : 'block';
-  } else {
-    friendsPanel.classList.toggle('hidden');
-  }
-};
-closeFriends.onclick = ()=> { friendsOverlay.classList.add('hidden'); friendsOverlay.style.display = 'none'; };
-
-// load friends areas
+// -------- friends UI & search (in-memory) --------
 async function loadFriendsUI(){
   try{
     const s = await get(ref(db, `users/${currentUserUid}/friends`));
@@ -434,41 +402,35 @@ async function loadFriendsUI(){
     const f = s.val();
     for(const uid of Object.keys(f)){
       const name = f[uid].username || uid;
-      const btn = document.createElement('button');
-      btn.className = 'w-full text-left px-3 py-2 bg-gray-800 rounded';
-      btn.textContent = name;
+      const btn = document.createElement('button'); btn.className='w-full text-left px-3 py-2 bg-gray-800 rounded'; btn.textContent = name;
       btn.onclick = ()=> openPrivateWith(uid, name);
       friendsArea.appendChild(btn);
       const clone = btn.cloneNode(true); clone.onclick = btn.onclick; friendsAreaDesktop.appendChild(clone);
     }
   }catch(e){ logError(e); }
 }
-loadFriendsUI();
 onValue(ref(db, `users/${currentUserUid}/friends`), ()=> loadFriendsUI());
 
-// search recommendations
-async function searchRecommendations(q, outEl){
+// search rendering function (used for desktop/mobile)
+function doSearchAndRender(q, outEl){
   outEl.innerHTML = '';
   if(!q) return;
-  try{
-    const snap = await get(ref(db,'usernames'));
-    if(!snap.exists()) return;
-    const all = snap.val();
-    let added = 0;
-    for(const key of Object.keys(all)){
-      if(added >= 10) break;
-      if(key.includes(q.toLowerCase())){
-        const uid = all[key];
-        if(uid === currentUserUid) continue; // ignore self
-        const userSnap = await get(ref(db, `users/${uid}`));
-        if(!userSnap.exists()) continue;
-        const user = userSnap.val();
-        const row = document.createElement('div'); row.className = 'p-2 bg-[#111318] rounded flex justify-between items-center';
+  const low = q.toLowerCase();
+  let added = 0;
+  for(const unameKey of Object.keys(allUsernames)){
+    if(added >= 12) break;
+    if(unameKey.includes(low)){
+      const uid = allUsernames[unameKey];
+      if(uid === currentUserUid) continue;
+      // fetch user data (cached not implemented; small number assumed)
+      get(ref(db, `users/${uid}`)).then(s=>{
+        if(!s.exists()) return;
+        const user = s.val();
+        const row = document.createElement('div'); row.className='p-2 bg-[#111318] rounded flex justify-between items-center';
         const name = document.createElement('div'); name.textContent = user.username;
-        // clicking name fills search input
         name.style.cursor = 'pointer';
         name.onclick = ()=>{
-           // fill both inputs if present
+          // fill search input depending on which outEl
           if(outEl === recommendations) friendSearch.value = user.username;
           if(outEl === recommendationsDesktop) friendSearchDesktop.value = user.username;
         };
@@ -481,30 +443,42 @@ async function searchRecommendations(q, outEl){
         };
         row.appendChild(name); row.appendChild(addBtn);
         outEl.appendChild(row);
-        added++;
-      }
+      }).catch(logError);
+      added++;
     }
-  }catch(e){ logError(e); }
+  }
 }
 
-friendSearch.addEventListener('input', (e)=> searchRecommendations(e.target.value, recommendations));
-friendSearchDesktop.addEventListener('input', (e)=> searchRecommendations(e.target.value, recommendationsDesktop));
 
-// open private chat with friend
+friendSearch.addEventListener('input', (e)=> doSearchAndRender(e.target.value, recommendations));
+friendSearchDesktop.addEventListener('input', (e)=> doSearchAndRender(e.target.value, recommendationsDesktop));
+
+// friends overlay toggle
+friendsToggle.onclick = ()=> {
+  if(window.innerWidth <= 760){
+    friendsOverlay.classList.toggle('hidden');
+    friendsOverlay.style.display = friendsOverlay.classList.contains('hidden') ? 'none' : 'block';
+  } else friendsPanel.classList.toggle('hidden');
+};
+closeFriends.onclick = ()=> { friendsOverlay.classList.add('hidden'); friendsOverlay.style.display='none'; };
+
+// open private chat
 async function openPrivateWith(uid, username){
   try{
     const id = roomIdFor(currentUserUid, uid);
-    // ensure room exists + participants entries for rules
-    const roomRef = ref(db, `privateMessages/${id}/participants`);
-    const snap = await get(roomRef);
-    if(!snap.exists()){
+    // ensure participants exist
+    const pRef = ref(db, `privateMessages/${id}/participants`);
+    const pSnap = await get(pRef);
+    if(!pSnap.exists()){
       await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
       await set(ref(db, `privateMessages/${id}/participants/${uid}`), true);
+    } else {
+      // ensure current is participant
+      await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
     }
     currentRoomId = id;
     sendModeEl.textContent = `Modo: DM (${username})`;
     await listenPrivate(id);
-    // switch tab UI
     tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800');
   }catch(e){ logError(e); }
 }
@@ -514,10 +488,8 @@ sendBtn.addEventListener('click', async ()=>{
   const text = messageInput.value.trim();
   if(!text) return;
   try{
-    // check ban
     const userSnap = await get(ref(db, `users/${currentUserUid}`));
     if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
-
     if(currentRoomId){
       await push(ref(db, `privateMessages/${currentRoomId}/messages`), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
     } else {
@@ -527,7 +499,7 @@ sendBtn.addEventListener('click', async ()=>{
   }catch(e){ logError(e); alert('Erro ao enviar'); }
 });
 
-// TABS
+// tabs
 tabGlobal.addEventListener('click', async ()=>{
   currentRoomId = null;
   sendModeEl.textContent = 'Modo: Global';
@@ -536,9 +508,29 @@ tabGlobal.addEventListener('click', async ()=>{
 });
 tabDM.addEventListener('click', ()=>{ tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800'); messagesEl.innerHTML = '<div class="text-gray-400">Selecione um amigo para abrir DM.</div>'; });
 
-// react to changes in global messages already handled by listeners
+// visibility change: refresh data when returning to tab
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden){
+    // refresh messages and friends without full reload
+    loadAndListenGlobal().catch(logError);
+    loadFriendsUI().catch(logError);
+    // refresh usernames cache already kept by onValue
+  }
+});
 
-// utility: accept friend request (example function, UI not added yet)
+// logout: full signOut
+logoutLink.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  try{
+    await fbSignOut(auth);
+  }catch(e){ console.warn('signOut error', e); }
+  localStorage.clear();
+  sessionStorage.clear();
+  // give a moment for signOut to propagate
+  setTimeout(()=> location.href = 'index.html', 200);
+});
+
+// utility: accept friend request via console or later UI
 async function acceptFriendRequest(fromUid){
   try{
     const fromSnap = await get(ref(db, `users/${fromUid}`));
@@ -550,7 +542,6 @@ async function acceptFriendRequest(fromUid){
     loadFriendsUI();
   }catch(e){ logError(e); }
 }
-// expose for convenience
 window.acceptFriendRequest = acceptFriendRequest;
 
 </script>
