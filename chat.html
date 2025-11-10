@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Chat — App (Discord style)</title>
+<title>Chat — App (final)</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.0/dist/purify.min.js"></script>
+
 <style>
   :root{
     --bg:#0d1117; --panel:#0f1418; --muted:#c9d1d9;
@@ -14,15 +15,14 @@
   }
   html,body{height:100%}
   body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0}
-  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 4px rgba(0,0,0,0.35)}
-  .meta{font-size:12px; opacity:0.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
+  .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 6px rgba(0,0,0,.35)}
+  .meta{font-size:12px; opacity:.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
   .meta .who{font-weight:600}
-  .meta .time{font-size:11px; opacity:0.6}
+  .meta .time{font-size:11px; opacity:.6}
   .actions{display:flex; gap:8px; margin-top:8px; justify-content:flex-end}
   .small-btn{font-size:12px; padding:6px 10px; border-radius:8px}
+  .fade{animation: fadeIn .18s ease-out}
   @keyframes fadeIn{from{opacity:0; transform:translateY(6px)}to{opacity:1; transform:none}}
-  .fade{animation:fadeIn .18s ease-out}
-  /* responsive friends overlay */
   #friendsOverlay{display:none}
   @media (max-width:760px){
     #friendsPanel{display:none}
@@ -33,17 +33,15 @@
     #friendsToggle{display:none}
     #friendsPanel{display:flex}
   }
-  /* input area */
   #messageInput{min-height:56px; max-height:180px; resize:none; width:100%}
-  /* messages sizing: width greater than height typical */
   .msg-bubble{max-width:78%}
-  /* fix send button sizing */
   .send-wrap{display:flex; flex-direction:column; gap:8px; align-items:flex-end}
-  /* smaller screens */
   @media (max-width:420px){
     .msg-bubble{max-width:90%}
     #friendsPanel{display:none}
   }
+  /* small stylings for friend requests area */
+  .request-row{ padding:8px; border-radius:8px; background:#0b1115; display:flex; justify-content:space-between; align-items:center; margin-bottom:6px }
 </style>
 </head>
 <body class="flex flex-col h-screen">
@@ -69,6 +67,9 @@
   <main id="mainColumn" class="flex-1 flex flex-col">
     <div id="messages" class="flex-1 overflow-auto p-4 space-y-3 bg-[#161b22]"></div>
 
+    <!-- typing indicator -->
+    <div id="typingNotice" class="text-xs text-gray-400 px-6 py-1"></div>
+
     <section class="bg-[#0f1418] p-3 border-t border-gray-800 flex gap-3 items-start">
       <textarea id="messageInput" placeholder="Escreva..." class="flex-1 p-2 rounded bg-[#0f1418] border border-gray-700 text-sm" rows="2"></textarea>
       <div class="send-wrap">
@@ -81,10 +82,17 @@
   <aside id="friendsPanel" class="w-80 bg-[#0f1418] border-l border-gray-800 p-3 hidden md:flex flex-col">
     <input id="friendSearchDesktop" placeholder="Pesquisar usuários..." class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 text-sm mb-3" />
     <div id="recommendationsDesktop" class="space-y-2 mb-3"></div>
+
+    <div>
+      <h4 class="text-sm mb-2">Solicitações</h4>
+      <div id="friendRequestsListDesktop" class="mb-3"></div>
+    </div>
+
     <div>
       <h4 class="text-sm mb-2">Seus amigos</h4>
-      <div id="friendsAreaDesktop" class="space-y-2 max-h-[40vh] overflow:auto"></div>
+      <div id="friendsAreaDesktop" class="space-y-2 max-h-[30vh] overflow:auto"></div>
     </div>
+
     <div class="mt-auto text-xs text-gray-400">Notificações: <span id="notifCount">0</span></div>
   </aside>
 </div>
@@ -97,6 +105,12 @@
       <button id="closeFriends" class="px-3 py-2 bg-gray-700 rounded">Fechar</button>
     </div>
     <div id="recommendations" class="space-y-2"></div>
+
+    <div class="mt-4">
+      <h4 class="text-sm mb-2">Solicitações</h4>
+      <div id="friendRequestsList" class="mb-3"></div>
+    </div>
+
     <div class="mt-4">
       <h4 class="text-sm mb-2">Seus amigos</h4>
       <div id="friendsArea" class="space-y-2"></div>
@@ -105,19 +119,15 @@
 </div>
 
 <script type="module">
-/* Final robust chat.html
-   - logout with signOut
-   - in-memory usernames via onValue (no duplicates)
-   - visibilitychange to refresh
-   - safe listeners (attach once)
-   - global + DM (Discord-like)
+/* chat.html final: Global + DM + friend requests + typing + admin force/logout + blocked write check
+   Use the Realtime DB rules we agreed on (typing, privateMessages, users, friendRequests, admins).
 */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 import {
   getDatabase, ref, push, onChildAdded, onChildChanged, onChildRemoved,
-  get, set, update, onValue, remove
+  get, set, update, onValue, remove, off
 } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -140,6 +150,7 @@ const messagesEl = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const sendModeEl = document.getElementById('sendMode');
+const typingNotice = document.getElementById('typingNotice');
 
 const friendsToggle = document.getElementById('friendsToggle');
 const friendsOverlay = document.getElementById('friendsOverlay');
@@ -150,6 +161,8 @@ const recommendations = document.getElementById('recommendations');
 const recommendationsDesktop = document.getElementById('recommendationsDesktop');
 const friendsArea = document.getElementById('friendsArea');
 const friendsAreaDesktop = document.getElementById('friendsAreaDesktop');
+const friendRequestsList = document.getElementById('friendRequestsList');
+const friendRequestsListDesktop = document.getElementById('friendRequestsListDesktop');
 const closeFriends = document.getElementById('closeFriends');
 
 const tabGlobal = document.getElementById('tabGlobal');
@@ -161,26 +174,28 @@ const logoutLink = document.getElementById('logoutLink');
 let currentUserUid = localStorage.getItem('chat_user_uid') || null;
 let currentUsername = localStorage.getItem('chat_user_username') || 'Anônimo';
 let authUid = null;
-let currentRoomId = null; // null=global, else private room id
+let currentRoomId = null; // null = global
+let markedParse = window.marked;
 
-const markedParse = window.marked;
+// usernames cache
+let allUsernames = {};
+onValue(ref(db, 'usernames'), snap=>{
+  allUsernames = snap.exists() ? snap.val() : {};
+  // refresh recommendations if user is typing in search
+  const active = document.activeElement;
+  if(active === friendSearch || active === friendSearchDesktop){
+    const value = active.value;
+    if(active === friendSearch) doSearchAndRender(value, recommendations);
+    else doSearchAndRender(value, recommendationsDesktop);
+  }
+});
+
+// helpers
 function renderMarkdown(md){ const html = markedParse.parse(md||''); return DOMPurify.sanitize(html); }
 function timeStr(ts){ try{ return new Date(ts).toLocaleTimeString(); }catch(e){ return ''; } }
 function logError(e){ console.error('CHAT ERROR', e); }
 
-// -------- usernames cache (no duplicates) --------
-let allUsernames = {}; // {lowername: uid}
-onValue(ref(db, 'usernames'), snap => {
-  allUsernames = snap.exists() ? snap.val() : {};
-  // keep UI responsive: if search term exists, refresh recommendations
-  const t = (document.activeElement === friendSearch) ? friendSearch.value : (document.activeElement === friendSearchDesktop ? friendSearchDesktop.value : '');
-  if(t) {
-    doSearchAndRender(t, recommendations);
-    doSearchAndRender(t, recommendationsDesktop);
-  }
-});
-
-// -------- message element builder --------
+// message element
 function createMessageElement(id, data, isPrivate=false){
   const wrapper = document.createElement('div');
   wrapper.className = 'fade flex';
@@ -226,7 +241,7 @@ function createMessageElement(id, data, isPrivate=false){
   return wrapper;
 }
 
-// modal
+// modal helper
 function openModal(title, content, onConfirm, confirmOnly=false){
   const modal = document.createElement('div');
   Object.assign(modal.style,{position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:120});
@@ -246,48 +261,72 @@ function openModal(title, content, onConfirm, confirmOnly=false){
   row.appendChild(bCancel); row.appendChild(bOk); box.appendChild(row); modal.appendChild(box); document.body.appendChild(modal);
 }
 
-// -------- authentication helpers --------
-async function ensureAuth(){
-  return new Promise((resolve) => {
-    if(auth.currentUser){
-      authUid = auth.currentUser.uid;
-      resolve(auth.currentUser);
-      return;
-    }
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if(user){
-        authUid = user.uid;
-        unsub();
-        resolve(user);
-      }
-    });
-    signInAnonymously(auth).catch((e)=>{ console.warn('signInAnonymously failed', e); });
+// typing
+let typingTimeout = null;
+function setTyping(isTyping){
+  const room = currentRoomId || 'global';
+  const tRef = ref(db, `typing/${room}/${currentUserUid}`);
+  if(isTyping){
+    set(tRef, { uid: currentUserUid, username: currentUsername, at: Date.now() }).catch(()=>{});
+    if(typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(()=> { remove(tRef).catch(()=>{}); }, 4000);
+  } else {
+    remove(tRef).catch(()=>{});
+    if(typingTimeout) clearTimeout(typingTimeout);
+  }
+}
+
+messageInput.addEventListener('input', ()=> {
+  setTyping(true);
+});
+
+// hide typing on blur/unload
+window.addEventListener('blur', ()=> setTyping(false));
+window.addEventListener('beforeunload', ()=> setTyping(false));
+
+// watch typing in a room (keeps single listener)
+let typingWatchRef = null;
+function watchTypingForRoom(roomId){
+  // detach previous
+  if(typingWatchRef) off(typingWatchRef);
+  const rr = ref(db, `typing/${roomId}`);
+  typingWatchRef = rr;
+  onValue(rr, snap=>{
+    const obj = snap.val() || {};
+    const others = Object.values(obj).filter(o => o.uid !== currentUserUid);
+    if(others.length === 0){ typingNotice.textContent = ''; return; }
+    const names = others.slice(0,3).map(o => o.username || o.uid);
+    typingNotice.textContent = names.join(', ') + (others.length > 1 ? ' estão digitando...' : ' está digitando...');
   });
 }
 
-// -------- global message loader + listener (attach once) --------
+// listeners management for private rooms
+let currentPrivateRef = null;
+function detachPrivateListeners(){
+  if(currentPrivateRef) {
+    try{ off(currentPrivateRef); }catch(e){}
+    currentPrivateRef = null;
+  }
+}
+
+// global listeners (attach once)
 let globalListenerAttached = false;
 let displayedGlobal = new Set();
 
 async function loadAndListenGlobal(){
   try{
     const refGlobal = ref(db, 'messages');
-    // initial load
+    // initial
     const snap = await get(refGlobal);
     messagesEl.innerHTML = '';
     displayedGlobal.clear();
     if(snap.exists()){
       const data = snap.val();
       const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
-      for(const k of keys){
-        displayedGlobal.add(k);
-        messagesEl.appendChild(createMessageElement(k, data[k], false));
-      }
+      for(const k of keys){ displayedGlobal.add(k); messagesEl.appendChild(createMessageElement(k, data[k], false)); }
       messagesEl.scrollTop = messagesEl.scrollHeight;
-    } else {
-      messagesEl.innerHTML = '<div class="text-gray-400">Sem mensagens públicas.</div>';
-    }
-    // attach child listeners only once
+    } else messagesEl.innerHTML = '<div class="text-gray-400">Sem mensagens públicas.</div>';
+
     if(!globalListenerAttached){
       onChildAdded(refGlobal, s=>{
         const id = s.key;
@@ -309,15 +348,19 @@ async function loadAndListenGlobal(){
       });
       globalListenerAttached = true;
     }
+    // watch typing on global
+    watchTypingForRoom('global');
   }catch(e){ logError(e); }
 }
 
-// -------- private messages (basic, load per room) --------
+// private room listener
 async function listenPrivate(roomId){
   try{
-    const msgsRef = ref(db, `privateMessages/${roomId}/messages`);
+    // detach previous
+    detachPrivateListeners();
+    currentPrivateRef = ref(db, `privateMessages/${roomId}/messages`);
     // initial
-    const snap = await get(msgsRef);
+    const snap = await get(currentPrivateRef);
     messagesEl.innerHTML = '';
     if(snap.exists()){
       const data = snap.val();
@@ -325,75 +368,57 @@ async function listenPrivate(roomId){
       for(const k of keys) messagesEl.appendChild(createMessageElement(k, data[k], true));
       messagesEl.scrollTop = messagesEl.scrollHeight;
     } else messagesEl.innerHTML = '<div class="text-gray-400">Sem mensagens nessa conversa.</div>';
-    // attach listeners (note: these will add duplicates across room changes but acceptable for most flows;
-    // improvements: store and remove listeners per room — can be added later)
-    onChildAdded(msgsRef, s=>{
+    // attach listeners
+    onChildAdded(currentPrivateRef, s=>{
       if(messagesEl.querySelector(`[data-msg-id="${s.key}"]`)) return;
       messagesEl.appendChild(createMessageElement(s.key, s.val(), true));
       messagesEl.scrollTop = messagesEl.scrollHeight;
     });
-    onChildChanged(msgsRef, s=>{
+    onChildChanged(currentPrivateRef, s=>{
       const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
       if(n) n.replaceWith(createMessageElement(s.key, s.val(), true));
     });
-    onChildRemoved(msgsRef, s=>{
+    onChildRemoved(currentPrivateRef, s=>{
       const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
       if(n) n.remove();
     });
+    // watch typing for this room
+    watchTypingForRoom(roomId);
   }catch(e){ logError(e); }
 }
 
-// deterministic room id
+// deterministic room ID
 function roomIdFor(a,b){ return [a,b].sort().join('_'); }
 
-// -------- boot sequence --------
-(async function bootstrap(){
-  try{
-    // ensure auth and session
-    await ensureAuth();
-    // if no local storage user id set, fallback to auth uid (makes testing easier)
-    if(!currentUserUid && auth.currentUser) {
-      currentUserUid = auth.currentUser.uid;
-      localStorage.setItem('chat_user_uid', currentUserUid);
-      localStorage.setItem('chat_user_username', currentUsername);
-    }
-    statusEl.textContent = 'Carregando...';
-
-    // load global messages and attach listeners
-    await loadAndListenGlobal();
-
-    // presence tracking
-    onValue(ref(db, '.info/connected'), snap=>{
-      if(snap.val() === true){
-        try{ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); }catch(e){}
-        statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-        window.addEventListener('beforeunload', ()=> {
-          try{ set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() }); }catch(e){}
-        });
-      } else {
-        statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
-      }
+// ensure auth
+async function ensureAuth(){
+  return new Promise((resolve)=>{
+    if(auth.currentUser){ resolve(auth.currentUser); return; }
+    const unsub = onAuthStateChanged(auth, (user)=>{
+      if(user){ unsub(); resolve(user); }
     });
+    signInAnonymously(auth).catch((e)=> console.warn('signInAnonymously failed', e));
+  });
+}
 
-    // admin link
-    const a = await get(ref(db, `admins/${currentUserUid}`));
-    if(a.exists() && a.val() === true) adminLink.classList.remove('hidden');
+// force logout listener (admin action)
+let forceLogoutUnsub = null;
+function watchForceLogout(){
+  const fRef = ref(db, `users/${currentUserUid}/forceLogoutAt`);
+  if(forceLogoutUnsub) off(forceLogoutUnsub);
+  forceLogoutUnsub = fRef;
+  onValue(fRef, async snap=>{
+    if(!snap.exists()) return;
+    const ts = snap.val();
+    // force signout
+    alert('Você foi deslogado pelo administrador.');
+    try{ await fbSignOut(auth); }catch(e){}
+    localStorage.clear();
+    location.href = 'index.html';
+  });
+}
 
-    // friend requests count
-    onValue(ref(db, `friendRequests/${currentUserUid}`), snap=>{
-      const val = snap.exists() ? Object.keys(snap.val()).length : 0;
-      notifCountEl.textContent = val;
-    });
-
-    // initial friends UI
-    await loadFriendsUI();
-
-    statusEl.textContent = 'Pronto';
-
-  }catch(e){ logError(e); statusEl.textContent = 'Erro'; }
-})();
-
-// -------- friends UI & search (in-memory) --------
+// friends UI loaders
 async function loadFriendsUI(){
   try{
     const s = await get(ref(db, `users/${currentUserUid}/friends`));
@@ -402,7 +427,7 @@ async function loadFriendsUI(){
     const f = s.val();
     for(const uid of Object.keys(f)){
       const name = f[uid].username || uid;
-      const btn = document.createElement('button'); btn.className='w-full text-left px-3 py-2 bg-gray-800 rounded'; btn.textContent = name;
+      const btn = document.createElement('button'); btn.className = 'w-full text-left px-3 py-2 bg-gray-800 rounded'; btn.textContent = name;
       btn.onclick = ()=> openPrivateWith(uid, name);
       friendsArea.appendChild(btn);
       const clone = btn.cloneNode(true); clone.onclick = btn.onclick; friendsAreaDesktop.appendChild(clone);
@@ -411,7 +436,46 @@ async function loadFriendsUI(){
 }
 onValue(ref(db, `users/${currentUserUid}/friends`), ()=> loadFriendsUI());
 
-// search rendering function (used for desktop/mobile)
+//friend requests rendering and listeners//
+function renderFriendRequests(snap, outEl){
+  outEl.innerHTML = '';
+  if(!snap.exists()) return;
+  const reqs = snap.val();
+  for(const fromUid in reqs){
+    const r = reqs[fromUid];
+    const row = document.createElement('div');
+    row.className = 'request-row';
+    const name = document.createElement('div'); name.textContent = r.username || fromUid;
+    const actions = document.createElement('div');
+    const accept = document.createElement('button'); accept.textContent='Aceitar'; accept.className='small-btn bg-blue-600 text-white mr-2';
+    const decline = document.createElement('button'); decline.textContent='Recusar'; decline.className='small-btn bg-gray-700 text-white';
+    accept.onclick = async ()=>{
+      try{
+        const fromSnap = await get(ref(db, `users/${fromUid}`));
+        const fromName = fromSnap.exists() ? fromSnap.val().username : 'Amigo';
+        await set(ref(db, `users/${currentUserUid}/friends/${fromUid}`), { username: fromName, addedAt: Date.now() });
+        await set(ref(db, `users/${fromUid}/friends/${currentUserUid}`), { username: currentUsername, addedAt: Date.now() });
+        const id = roomIdFor(currentUserUid, fromUid);
+        await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
+        await set(ref(db, `privateMessages/${id}/participants/${fromUid}`), true);
+        await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`));
+      }catch(e){ logError(e); }
+    };
+    decline.onclick = async ()=> { try{ await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`)); }catch(e){ logError(e); } };
+    actions.appendChild(accept); actions.appendChild(decline);
+    row.appendChild(name); row.appendChild(actions);
+    outEl.appendChild(row);
+  }
+}
+
+onValue(ref(db, `friendRequests/${currentUserUid}`), snap=>{
+  renderFriendRequests(snap, friendRequestsList);
+  renderFriendRequests(snap, friendRequestsListDesktop);
+  const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+  notifCountEl.textContent = count;
+});
+
+// search recommendations (debounced-ish simplified)
 function doSearchAndRender(q, outEl){
   outEl.innerHTML = '';
   if(!q) return;
@@ -422,7 +486,6 @@ function doSearchAndRender(q, outEl){
     if(unameKey.includes(low)){
       const uid = allUsernames[unameKey];
       if(uid === currentUserUid) continue;
-      // fetch user data (cached not implemented; small number assumed)
       get(ref(db, `users/${uid}`)).then(s=>{
         if(!s.exists()) return;
         const user = s.val();
@@ -430,7 +493,6 @@ function doSearchAndRender(q, outEl){
         const name = document.createElement('div'); name.textContent = user.username;
         name.style.cursor = 'pointer';
         name.onclick = ()=>{
-          // fill search input depending on which outEl
           if(outEl === recommendations) friendSearch.value = user.username;
           if(outEl === recommendationsDesktop) friendSearchDesktop.value = user.username;
         };
@@ -441,26 +503,15 @@ function doSearchAndRender(q, outEl){
             addBtn.textContent = 'Enviado';
           }catch(e){ logError(e); addBtn.textContent = 'Erro'; }
         };
-        row.appendChild(name); row.appendChild(addBtn);
-        outEl.appendChild(row);
+        row.appendChild(name); row.appendChild(addBtn); outEl.appendChild(row);
       }).catch(logError);
       added++;
     }
   }
 }
 
-
-friendSearch.addEventListener('input', (e)=> doSearchAndRender(e.target.value, recommendations));
-friendSearchDesktop.addEventListener('input', (e)=> doSearchAndRender(e.target.value, recommendationsDesktop));
-
-// friends overlay toggle
-friendsToggle.onclick = ()=> {
-  if(window.innerWidth <= 760){
-    friendsOverlay.classList.toggle('hidden');
-    friendsOverlay.style.display = friendsOverlay.classList.contains('hidden') ? 'none' : 'block';
-  } else friendsPanel.classList.toggle('hidden');
-};
-closeFriends.onclick = ()=> { friendsOverlay.classList.add('hidden'); friendsOverlay.style.display='none'; };
+friendSearch.addEventListener('input', e => doSearchAndRender(e.target.value, recommendations));
+friendSearchDesktop.addEventListener('input', e => doSearchAndRender(e.target.value, recommendationsDesktop));
 
 // open private chat
 async function openPrivateWith(uid, username){
@@ -473,7 +524,6 @@ async function openPrivateWith(uid, username){
       await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
       await set(ref(db, `privateMessages/${id}/participants/${uid}`), true);
     } else {
-      // ensure current is participant
       await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
     }
     currentRoomId = id;
@@ -483,66 +533,128 @@ async function openPrivateWith(uid, username){
   }catch(e){ logError(e); }
 }
 
-// send handler
+// send message (check blocked/ban and write to correct path)
 sendBtn.addEventListener('click', async ()=>{
   const text = messageInput.value.trim();
   if(!text) return;
   try{
+    // block/banned check
     const userSnap = await get(ref(db, `users/${currentUserUid}`));
-    if(userSnap.exists() && userSnap.val().isBanned){ alert('Você foi banido.'); return; }
+    if(userSnap.exists()){
+      const u = userSnap.val();
+      if(u.isBanned){ alert('Você foi banido.'); return; }
+      if(u.isBlocked){ alert('Você foi silenciado pelo administrador.'); return; }
+    }
+
     if(currentRoomId){
       await push(ref(db, `privateMessages/${currentRoomId}/messages`), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
     } else {
       await push(ref(db, 'messages'), { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() });
     }
     messageInput.value = '';
+    setTyping(false);
   }catch(e){ logError(e); alert('Erro ao enviar'); }
 });
 
-// tabs
+// tabs behavior
 tabGlobal.addEventListener('click', async ()=>{
   currentRoomId = null;
   sendModeEl.textContent = 'Modo: Global';
   tabGlobal.classList.add('bg-gray-800'); tabDM.classList.remove('bg-gray-800');
+  detachPrivateListeners();
   await loadAndListenGlobal();
 });
 tabDM.addEventListener('click', ()=>{ tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800'); messagesEl.innerHTML = '<div class="text-gray-400">Selecione um amigo para abrir DM.</div>'; });
 
-// visibility change: refresh data when returning to tab
+// visibility handling: refresh lightweight things when tab becomes visible
 document.addEventListener('visibilitychange', ()=>{
   if(!document.hidden){
-    // refresh messages and friends without full reload
-    loadAndListenGlobal().catch(logError);
+    // refresh global messages and friends list if in global
+    if(!currentRoomId) loadAndListenGlobal().catch(logError);
     loadFriendsUI().catch(logError);
-    // refresh usernames cache already kept by onValue
   }
 });
 
-// logout: full signOut
+// logout (full sign out)
 logoutLink.addEventListener('click', async (e)=>{
   e.preventDefault();
-  try{
-    await fbSignOut(auth);
-  }catch(e){ console.warn('signOut error', e); }
-  localStorage.clear();
-  sessionStorage.clear();
-  // give a moment for signOut to propagate
-  setTimeout(()=> location.href = 'index.html', 200);
+  try{ await fbSignOut(auth); }catch(e){ console.warn('signOut error', e); }
+  localStorage.clear(); sessionStorage.clear();
+  setTimeout(()=> location.href = 'index.html', 150);
 });
 
-// utility: accept friend request via console or later UI
-async function acceptFriendRequest(fromUid){
+// watch admin status to show admin link
+(async function displayAdminIf(){
+  try{
+    const adm = await get(ref(db, `admins/${currentUserUid}`));
+    if(adm.exists() && adm.val() === true) adminLink.classList.remove('hidden');
+  }catch(e){ }
+})();
+
+// auth bootstrap
+async function bootstrap(){
+  try{
+    await ensureAuth();
+    // if local storage uid missing, fall back to auth uid (makes testing easier)
+    if(!currentUserUid && auth.currentUser){
+      currentUserUid = auth.currentUser.uid;
+      localStorage.setItem('chat_user_uid', currentUserUid);
+      localStorage.setItem('chat_user_username', currentUsername);
+    }
+    statusEl.textContent = 'Carregando...';
+
+    // start global messages
+    await loadAndListenGlobal();
+
+    // presence tracking
+    onValue(ref(db, '.info/connected'), snap=>{
+      if(snap.val() === true){
+        try{ set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); }catch(e){}
+        statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
+        window.addEventListener('beforeunload', ()=> {
+          try{ set(ref(db, `status/${currentUserUid}`), { state:'offline', last_changed: Date.now() }); }catch(e){}
+        });
+      } else statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
+    });
+
+    // watch force logout flag
+    watchForceLogout();
+
+    // initial friends UI
+    await loadFriendsUI();
+
+    statusEl.textContent = 'Pronto';
+  }catch(e){ logError(e); statusEl.textContent = 'Erro'; }
+}
+bootstrap();
+
+// watch for changes to user's blocked/forceLogout etc (reactive)
+onValue(ref(db, `users/${currentUserUid}`), snap=>{
+  if(!snap.exists()) return;
+  const val = snap.val();
+  // if admin set isBlocked while user is in page, show notice (and disabled sending is enforced on send)
+  if(val.isBlocked) {
+    // optional: show a subtle message
+    // console.log('Você está silenciado pelo admin.');
+  }
+});
+
+// watch friend requests handled above via onValue
+
+// utility: accept friend request exposed for console if needed
+window.acceptFriendRequest = async (fromUid) => {
   try{
     const fromSnap = await get(ref(db, `users/${fromUid}`));
-    if(!fromSnap.exists()) return;
-    const fromName = fromSnap.val().username || fromUid;
+    const fromName = fromSnap.exists() ? fromSnap.val().username : 'Amigo';
     await set(ref(db, `users/${currentUserUid}/friends/${fromUid}`), { username: fromName, addedAt: Date.now() });
     await set(ref(db, `users/${fromUid}/friends/${currentUserUid}`), { username: currentUsername, addedAt: Date.now() });
+    const id = roomIdFor(currentUserUid, fromUid);
+    await set(ref(db, `privateMessages/${id}/participants/${currentUserUid}`), true);
+    await set(ref(db, `privateMessages/${id}/participants/${fromUid}`), true);
     await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`));
     loadFriendsUI();
   }catch(e){ logError(e); }
-}
-window.acceptFriendRequest = acceptFriendRequest;
+};
 
 </script>
 </body>
