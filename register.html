@@ -23,7 +23,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
 const firebaseConfig = {
   "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
@@ -63,12 +63,16 @@ btn.addEventListener('click', async () => {
     const existing = await get(ref(db, `usernames/${unameKey}`));
     if(existing.exists()){ msg.textContent = 'Nome já existe.'; return; }
 
-    // Cria uma autenticação anônima para obter um UID
+    // CORREÇÃO: Encerra qualquer sessão anterior (anônima ou não) para forçar um novo UID.
+    await signOut(auth).catch(() => {});
+    localStorage.clear();
+
+    // Cria uma nova autenticação anônima para obter um UID novo e limpo
     await signInAnonymously(auth).catch(()=>{});
     const user = auth.currentUser;
-    if(!user){ msg.textContent = 'Erro: não autenticado.'; return; }
-    const uid = user.uid;
+    if(!user){ msg.textContent = 'Erro: falha ao autenticar para registro. Tente novamente.'; return; }
     
+    const uid = user.uid;
     const hash = await hashPassword(username, password);
     const now = Date.now();
 
@@ -76,7 +80,7 @@ btn.addEventListener('click', async () => {
       username,
       passwordHash: hash,
       createdAt: now,
-      lastSeen: now, // Garante que o lastSeen é definido
+      lastSeen: now,
       isBanned: false,
       isBlocked: false,
       friends: {}
