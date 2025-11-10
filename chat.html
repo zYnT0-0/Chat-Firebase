@@ -15,401 +15,370 @@
   }
   html,body{height:100%}
   body{background:var(--bg); color:var(--muted); font-family:Inter,system-ui; margin:0}
+  .chat-container{display:flex; height:100vh}
+  .main-chat-area{flex-grow:1; display:flex; flex-direction:column; max-width:100%}
+  .messages{flex-grow:1; overflow-y:auto; padding:15px; display:flex; flex-direction:column; gap:10px}
   .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 6px rgba(0,0,0,.35)}
   .meta{font-size:12px; opacity:.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
   .meta .who{font-weight:600}
-  .meta .time{font-size:11px;}
-
-  /* NOVO CÓDIGO - ALERTA TOAST */
-  .alert-toast {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: var(--panel); 
-    color: var(--muted);
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    z-index: 1000;
-    transition: opacity 0.3s, transform 0.3s;
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  .alert-toast.show {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  .alert-toast.danger {
-    background: #ef4444; /* Vermelho */
-    color: white;
-  }
+  .meta .time{font-size:11px; opacity:.6}
+  .msg-mine{background:var(--mine); color:white; align-self:flex-end}
+  .msg-other{background:var(--other); color:var(--muted); align-self:flex-start}
+  .sidebar{width:250px; flex-shrink:0; background:var(--panel); border-right:1px solid #1f2937; padding:15px; display:flex; flex-direction:column; gap:10px}
+  .typing{font-size:12px; opacity:.7}
+  .online-user{padding:8px; background:#1f2937; border-radius:6px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;}
+  .online-user:hover{background:#2a3447}
+  .status-dot{width:8px; height:8px; border-radius:50%; margin-left:8px}
 </style>
 </head>
-<body class="flex flex-col h-screen">
+<body>
+<div class="chat-container">
+  <div class="sidebar">
+    <div class="flex justify-between items-center mb-4">
+      <h3 id="currentUsernameDisplay" class="font-bold text-lg text-blue-400">...</h3>
+      <a id="logout" href="#" class="text-sm text-red-400 hover:text-red-300">Sair</a>
+    </div>
+    <div id="statusEl" class="text-sm">Carregando...</div>
+    <div id="adminLink" class="text-sm text-yellow-400 hidden"><a href="admin.html" class="hover:underline">Painel Admin</a></div>
+    <div id="friendRequests" class="text-sm space-y-2"></div>
 
-<div id="header" class="p-4 bg-gray-900 border-b border-gray-700/50 flex justify-between items-center">
-  <div class="text-xl font-bold">Chat Global</div>
-  <nav class="flex gap-4 text-sm">
-    <a id="adminLink" href="admin.html" class="hover:text-blue-400 hidden">Admin</a>
-    <a href="profile.html" class="hover:text-blue-400">Meu Perfil</a> 
-    <a id="logout" href="#" class="hover:text-red-400">Sair</a>
-  </nav>
-</div>
-
-<div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+    <h4 class="text-sm font-semibold mt-4">Online (Global)</h4>
+    <div id="onlineUsersList" class="space-y-1 overflow-y-auto flex-grow"></div>
+    <div id="friendList" class="mt-4 border-t border-gray-700 pt-2 space-y-1">
+      <h4 class="text-sm font-semibold">Amigos (DM)</h4>
+    </div>
   </div>
-
-<div id="statusEl" class="text-xs italic text-gray-500 p-1 text-right">Carregando...</div>
-
-<div id="typingStatus" class="text-xs italic text-gray-500 mb-1 h-4 ml-4"></div>
-
-<div id="chatFooter" class="p-4 bg-gray-800 flex items-center">
-  <input id="messageInput" type="text" placeholder="Escreva uma mensagem..." class="flex-1 p-3 rounded-l-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:border-blue-500" />
-  <button id="sendBtn" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-r-lg font-semibold transition-colors">Enviar</button>
+  
+  <div class="main-chat-area">
+    <div id="messages" class="messages">
+      </div>
+    <div id="typingIndicator" class="typing px-4 pb-2 text-sm">Ninguém digitando.</div>
+    <div id="blockMessage" class="px-4 py-3 bg-red-800 text-white text-sm text-center hidden">
+      Você está silenciado pelo administrador. Não é possível enviar mensagens.
+    </div>
+    <div class="p-4 border-t border-gray-700 flex gap-2">
+      <input id="messageInput" placeholder="Digite sua mensagem (Max 500 chars, Markdown)." maxlength="500" class="flex-1 p-3 rounded bg-[#0b1220] border border-gray-700 focus:outline-none" />
+      <button id="btnSend" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded disabled:opacity-50">Enviar</button>
+    </div>
+  </div>
 </div>
+
+<div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50">
+    </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, set, push, onValue, update, get, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, get, push, set, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp, onDisconnect, update, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
-// Configuração do Firebase (assumindo que a sua está aqui)
 const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2100d024467d169d2d09"
+  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  authDomain: "chat-firebase-efcbe.firebaseapp.com",
+  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  projectId: "chat-firebase-efcbe",
+  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+  messagingSenderId: "376919463932",
+  appId: "1:376919463932:web:4b2139df551d0a026ac479",
+  measurementId: "G-R14XVTJBFL"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-const currentUserUid = localStorage.getItem('chat_user_uid');
-const currentUsername = localStorage.getItem('chat_user_username');
-const isAdmin = JSON.parse(localStorage.getItem('chat_is_admin') || 'false');
-
-if (!currentUserUid || !currentUsername) {
-  location.href = 'index.html';
-}
-
-const messageInput = document.getElementById('messageInput');
-const sendBtn = document.getElementById('sendBtn');
-const messagesEl = document.getElementById('messages');
-const statusEl = document.getElementById('statusEl');
-const adminLink = document.getElementById('adminLink');
-
+// Globals
+let currentUserUid = localStorage.getItem('chat_user_uid');
+let currentUsername = localStorage.getItem('chat_user_username');
 let isBlocked = false;
-let currentTimeout;
-const TYPING_TIMEOUT = 3000;
+let messageQueue = []; // Queue for messages while loading
 
-// =========================================================================
-// FUNÇÕES UTILITY
-// =========================================================================
+// DOM Elements
+const messagesEl = document.getElementById('messages');
+const messageInput = document.getElementById('messageInput');
+const btnSend = document.getElementById('btnSend');
+const statusEl = document.getElementById('statusEl');
+const logoutBtn = document.getElementById('logout');
+const typingIndicator = document.getElementById('typingIndicator');
+const onlineUsersList = document.getElementById('onlineUsersList');
+const blockMessage = document.getElementById('blockMessage');
+const currentUsernameDisplay = document.getElementById('currentUsernameDisplay');
 
-// NOVA FUNÇÃO: Alerta estilizado e seguro
-function showAlert(message, type = 'default') {
-    // PREVENÇÃO DE VAZAMENTO DE DADOS: Remove URLs e UIDs de mensagens de erro
-    let safeMessage = String(message).replace(/https?:\/\/[^\s]+/g, 'https://www.spanishdict.com/translate/removido').replace(/[a-zA-Z0-9]{28}/g, '[UID Removido]');
+// CORREÇÃO DE ALERTS: Função de Toast estilizada
+function showToast(message, type = 'blue') {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    let bgColor = 'bg-blue-600';
+    if(type === 'error') bgColor = 'bg-red-600';
+    if(type === 'success') bgColor = 'bg-green-600';
+    if(type === 'warning') bgColor = 'bg-yellow-600';
+
+    toast.className = `${bgColor} text-white p-3 rounded shadow-lg text-sm transition-opacity duration-300 opacity-90`;
+    toast.textContent = message;
+    container.appendChild(toast);
     
-    const alertEl = document.createElement('div');
-    alertEl.className = `alert-toast ${type}`;
-    alertEl.textContent = safeMessage;
-    
-    document.body.appendChild(alertEl);
-    
-    setTimeout(() => { alertEl.classList.add('show'); }, 10);
     setTimeout(() => {
-        alertEl.classList.remove('show');
-        setTimeout(() => alertEl.remove(), 300);
-    }, 5000); 
+        toast.style.opacity = '0';
+        toast.addEventListener('transitionend', () => toast.remove());
+    }, 4000);
 }
 
-// NOVO CÓDIGO: Substitui logError
-window.logError = (e) => { 
-  console.error(e); 
-  showAlert(e.message || 'Um erro desconhecido ocorreu.', 'danger'); 
+// Utility to handle safe rendering of message content
+function renderMessage(text) {
+  const safeHtml = DOMPurify.sanitize(marked.parse(text));
+  return safeHtml;
 }
 
-const el = (tag, classes) => {
-  const element = document.createElement(tag);
-  if(classes) element.className = classes;
-  return element;
-};
-
-const scrollToBottom = () => {
+// Utility to force scroll to bottom
+function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
-};
+}
 
-// =========================================================================
-// PRESENÇA E DIGITAÇÃO
-// =========================================================================
+// Utility for formatting time
+function formatTime(timestamp) {
+  try { return new Date(timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } 
+  catch(e) { return 'N/A'; }
+}
 
-// Define o status de presença (online)
-const setPresence = (isOnline) => {
-  const statusRef = ref(db, `status/${currentUserUid}`);
-  if (isOnline) {
-    update(statusRef, { isOnline: true, lastSeen: Date.now(), username: currentUsername });
-    // Configura onDisconnect
-    onValue(ref(db, '.info/connected'), (snap) => {
-      if (snap.val() === true) {
-        statusRef.onDisconnect().update({ isOnline: false, lastSeen: Date.now() });
-      }
-    });
-  } else {
-    update(statusRef, { isOnline: false, lastSeen: Date.now() });
-  }
-};
+// RENDER MESSAGE
+function addMessageToDOM(msg, key) {
+  if (document.getElementById(`msg-${key}`)) return;
 
-// Define o status de digitação
-const setTyping = (isTyping) => {
-  const typingRef = ref(db, `typing/global/${currentUserUid}`);
-  if (isTyping) {
-    set(typingRef, { username: currentUsername, at: Date.now() });
-  } else {
-    set(typingRef, null);
-  }
-};
+  const isMine = msg.uid === currentUserUid;
+  const bubble = document.createElement('div');
+  bubble.id = `msg-${key}`;
+  bubble.className = isMine ? 'msg-mine msg-bubble' : 'msg-other msg-bubble';
+  
+  const meta = document.createElement('div');
+  meta.className = 'meta';
+  
+  const who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = msg.username || 'Usuário Desconhecido';
+  
+  const time = document.createElement('span');
+  time.className = 'time';
+  time.textContent = formatTime(msg.timestamp);
 
-// Listener para o input
-messageInput.addEventListener('input', () => {
-  if (isBlocked) return;
-  setTyping(true);
+  meta.appendChild(who);
+  meta.appendChild(time);
+  bubble.appendChild(meta);
+  
+  const content = document.createElement('div');
+  content.innerHTML = renderMessage(msg.text);
+  bubble.appendChild(content);
 
-  clearTimeout(currentTimeout);
-  currentTimeout = setTimeout(() => {
-    setTyping(false);
-  }, TYPING_TIMEOUT);
-});
+  messagesEl.appendChild(bubble);
+  scrollToBottom();
+}
 
-// =========================================================================
-// CHAT PRINCIPAL
-// =========================================================================
+// LOAD AND LISTEN GLOBAL MESSAGES
+async function loadAndListenGlobal() {
+  const messagesRef = ref(db, 'messages');
+  onChildAdded(messagesRef, (data) => {
+    addMessageToDOM(data.val(), data.key);
+    // Process queued messages once the system is ready
+    if(messageQueue.length > 0) {
+        messageQueue.forEach(m => addMessageToDOM(m.val(), m.key));
+        messageQueue = [];
+    }
+  }, (error) => {
+    console.error("Erro ao carregar mensagens:", error);
+    showToast('Erro ao carregar o histórico de mensagens.', 'error'); // CORREÇÃO DE ALERT
+  });
+}
 
-// envia mensagem
-const sendMessage = async () => {
-  const text = messageInput.value.trim();
-  if (!text || isBlocked) {
-    if(isBlocked) showAlert('Você está silenciado e não pode enviar mensagens.', 'danger');
+// SEND MESSAGE
+btnSend.addEventListener('click', async () => {
+  if(isBlocked) {
+    showToast('Você está silenciado e não pode enviar mensagens.', 'warning'); // CORREÇÃO DE ALERT
     return;
   }
+  const text = messageInput.value.trim();
+  if (text === '') return;
 
+  const newMessageRef = push(ref(db, 'messages'));
   try {
-    const newMessageRef = push(ref(db, 'messages'));
     await set(newMessageRef, {
-      userId: currentUserUid,
+      uid: currentUserUid,
       username: currentUsername,
       text: text,
       timestamp: serverTimestamp()
     });
     messageInput.value = '';
-    setTyping(false); 
-    clearTimeout(currentTimeout); // Garante que o flag de digitação seja limpo
-  } catch (err) {
-    logError(err);
-  }
-};
-
-sendBtn.addEventListener('click', sendMessage);
-messageInput.addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') {
-    sendMessage();
+    // After sending, clear typing status
+    set(ref(db, `typing/global/${currentUserUid}`), null);
+  } catch (e) {
+    console.error("Erro ao enviar mensagem:", e);
+    showToast('Erro ao enviar mensagem.', 'error'); // CORREÇÃO DE ALERT
   }
 });
 
-// Função para renderizar mensagens
-let lastMsgTimestamp = 0;
-const renderMessage = (msgId, data) => {
-  const isMine = data.userId === currentUserUid;
-  const username = data.username || 'Usuário Desconhecido';
-  const timestamp = data.timestamp;
-
-  const msgTime = new Date(timestamp);
-  const timeString = msgTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  // Cria a bolha da mensagem
-  const msgWrapper = el('div', 'flex ' + (isMine ? 'justify-end' : 'justify-start'));
-  const msgContent = el('div', 'flex flex-col max-w-lg');
-  const bubble = el('div', 'msg-bubble ' + (isMine ? 'bg-mine text-white' : 'bg-other text-white/90'));
-  bubble.innerHTML = DOMPurify.sanitize(marked.parse(data.text));
-
-  // Cria o meta
-  const meta = el('div', 'meta ' + (isMine ? 'justify-end' : 'justify-start'));
-  const who = el('span', 'who ' + (isMine ? 'text-white/80' : 'text-white/80'));
-  who.textContent = username;
-
-  const time = el('span', 'time');
-  time.textContent = timeString;
-
-  meta.appendChild(who);
-  meta.appendChild(time);
-  
-  // Adiciona evento ao username (abre perfil)
-  who.onclick = () => {
-      // SEGURANÇA: Não passa UID na URL
-      if (isMine) {
-          location.href = 'profile.html';
-      } else {
-          // Se for outro usuário, pode passar o UID se o profile.html for seguro
-          // ALTERNATIVA: location.href = `profile.html?uid=${data.userId}`;
-          // Para manter a segurança, mantenha apenas o nome.
-          // Se o perfil precisar de UID, você terá que reavaliar a política de segurança.
-          showAlert(`Abrindo perfil de ${username}...`, 'default');
-          location.href = `profile.html?uid=${data.userId}`;
-      }
-  };
-
-  msgContent.appendChild(meta);
-  msgContent.appendChild(bubble);
-  msgWrapper.appendChild(msgContent);
-  messagesEl.appendChild(msgWrapper);
-};
-
-// Listener para novas mensagens
-onValue(ref(db, 'messages'), (snapshot) => {
-  messagesEl.innerHTML = ''; // Limpa tudo para renderizar o histórico
-  snapshot.forEach((childSnapshot) => {
-    const data = childSnapshot.val();
-    // Verifica se a mensagem tem conteúdo válido
-    if(data && data.text) {
-        renderMessage(childSnapshot.key, data);
+// PRESENCE (ONLINE STATUS)
+function setupPresence() {
+  onValue(ref(db, '.info/connected'), (snap) => {
+    if (snap.val() === true) {
+      // Set user status to online and set up onDisconnect
+      set(ref(db, `status/${currentUserUid}`), { state: 'online', last_changed: Date.now() });
+      onDisconnect(ref(db, `status/${currentUserUid}`)).set({ state: 'offline', last_changed: Date.now() });
+      statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
+    } else {
+      statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
     }
   });
-  scrollToBottom();
-});
-
-// =========================================================================
-// SETUP E CHECAGENS
-// =========================================================================
-
-const checkAdmin = async () => {
-  const adminSnap = await get(ref(db, `admins/${currentUserUid}`));
-  if (adminSnap.exists() && adminSnap.val() === true) {
-    adminLink.classList.remove('hidden');
-    localStorage.setItem('chat_is_admin', 'true');
-  } else {
-    localStorage.setItem('chat_is_admin', 'false');
-  }
-};
-
-const checkForceLogout = async (val) => {
-  // 1. Checa Banimento na inicialização
-  if(val.isBanned) {
-    showAlert('Você está banido permanentemente.', 'danger');
-    await signOut(auth);
-    localStorage.clear();
-    location.href = 'index.html';
-    return true;
-  }
-  // 2. Checa Bloqueio na inicialização
-  isBlocked = val.isBlocked;
-  if (isBlocked) {
-    showAlert('Você está silenciado e não pode enviar mensagens.', 'danger');
-  }
-
-  return false;
 }
 
-// watch for changes to user's blocked/forceLogout etc (reactive)
-onValue(ref(db, `users/${currentUserUid}`), snap=>{
-  if(!snap.exists()) return;
-  const val = snap.val();
-  
-  // VERIFICAÇÃO DE DESLOGAMENTO FORÇADO (KICK)
-  // O valor de forceLogoutAt é comparado com o tempo atual - 5 segundos para garantir que o evento não seja antigo
-  if(val.forceLogoutAt && val.forceLogoutAt > Date.now() - 5000) {
-    showAlert('Você foi desconectado pelo Administrador.', 'danger');
-    
-    setTimeout(async () => {
-      try{ await signOut(auth); localStorage.clear(); location.href = 'index.html'; }catch(e){ console.warn(e); }
-    }, 1000); 
-    return; 
-  }
+// TYPING INDICATOR
+function setupTyping() {
+  let typingUsers = {};
 
-  // se admin set isBlocked while user is in page, show notice
-  if(val.isBlocked !== isBlocked) {
-    isBlocked = val.isBlocked;
+  messageInput.addEventListener('input', () => {
+    if (messageInput.value.length > 0) {
+      set(ref(db, `typing/global/${currentUserUid}`), currentUsername);
+    } else {
+      set(ref(db, `typing/global/${currentUserUid}`), null);
+    }
+  });
+
+  onValue(ref(db, 'typing/global'), (snap) => {
+    typingUsers = snap.val() || {};
+    const names = Object.entries(typingUsers)
+      .filter(([uid, name]) => uid !== currentUserUid)
+      .map(([uid, name]) => name);
+
+    if (names.length > 0) {
+      typingIndicator.textContent = names.join(', ') + (names.length === 1 ? ' está digitando...' : ' estão digitando...');
+    } else {
+      typingIndicator.textContent = 'Ninguém digitando.';
+    }
+  });
+}
+
+// ONLINE USERS LIST
+function setupOnlineUsersList() {
+  onValue(ref(db, 'status'), async (snap) => {
+    onlineUsersList.innerHTML = '';
+    const statuses = snap.val() || {};
+    const uids = Object.keys(statuses).filter(uid => statuses[uid].state === 'online' && uid !== currentUserUid);
+
+    for (const uid of uids) {
+      const status = statuses[uid];
+      const userSnap = await get(ref(db, `users/${uid}`));
+      if (!userSnap.exists()) continue;
+
+      const user = userSnap.val();
+      const userEl = document.createElement('div');
+      userEl.className = 'online-user';
+      userEl.innerHTML = `
+        <span>${user.username}</span>
+        <span class="status-dot bg-green-500"></span>
+      `;
+      userEl.onclick = () => window.open(`profile.html?uid=${uid}`, '_blank');
+      onlineUsersList.appendChild(userEl);
+    }
+  });
+}
+
+// ADMIN LINK & FORCE LOGOUT
+async function watchForceLogout() {
+  const userRef = ref(db, `users/${currentUserUid}`);
+  onValue(userRef, (snap) => {
+    const user = snap.val();
+    if (!user) return;
+    
+    // Check for isBlocked
+    const wasBlocked = isBlocked;
+    isBlocked = user.isBlocked || false;
+    
     if (isBlocked) {
-        showAlert('Sua conta foi silenciada pelo Administrador.', 'danger');
+      messageInput.disabled = true;
+      btnSend.disabled = true;
+      blockMessage.classList.remove('hidden');
+      if(!wasBlocked) showToast('Você foi silenciado por um administrador.', 'warning'); // CORREÇÃO DE ALERT
     } else {
-        showAlert('Seu silêncio foi removido pelo Administrador.', 'default');
+      messageInput.disabled = false;
+      btnSend.disabled = false;
+      blockMessage.classList.add('hidden');
+      if(wasBlocked) showToast('Seu silêncio foi removido. Você pode voltar a falar.', 'success'); // CORREÇÃO DE ALERT
     }
-  } else if (val.isBanned) {
-    showAlert('Sua conta foi banida permanentemente pelo Administrador.', 'danger');
-  }
-});
 
-
-// watch typing flags (to show if any user typing in rooms)
-onValue(ref(db,'typing'), snap=> {
-  const typingStatusEl = document.getElementById('typingStatus');
-  if(!typingStatusEl) return;
-  
-  const typingUsers = [];
-  const rooms = snap.val() || {};
-
-  // Verifica o chat global (assumindo a chave 'global')
-  const globalTyping = rooms['global'] || {}; 
-
-  for(const uid in globalTyping){
-    // Exclui o próprio usuário
-    if(uid !== currentUserUid && globalTyping[uid] && globalTyping[uid].username){
-      typingUsers.push(globalTyping[uid].username);
+    // Check for forceLogoutAt
+    if (user.forceLogoutAt) {
+      if (Date.now() - user.forceLogoutAt < 5000) { // Check if flag is recent
+        showToast('Você foi desconectado forçadamente por um administrador.', 'error'); // CORREÇÃO DE ALERT
+        setTimeout(() => {
+          signOut(auth);
+          localStorage.clear();
+          location.href = 'index.html';
+        }, 1500);
+      }
     }
-  }
+    
+    // Admin link visibility
+    displayAdminIf(currentUserUid);
+  });
+}
 
-  if(typingUsers.length === 1){
-    typingStatusEl.textContent = `${typingUsers[0]} está digitando...`;
-  } else if(typingUsers.length > 1){
-    // Exibe os 2 primeiros + "e mais" se houver mais de 2
-    const othersCount = typingUsers.length - 2;
-    if (othersCount > 0) {
-        typingStatusEl.textContent = `${typingUsers.slice(0, 2).join(', ')} e mais ${othersCount} estão digitando...`;
-    } else {
-        typingStatusEl.textContent = `${typingUsers.join(' e ')} estão digitando...`;
-    }
+async function displayAdminIf(uid) {
+  const adminSnap = await get(ref(db, `admins/${uid}`));
+  if (adminSnap.exists() && adminSnap.val() === true) {
+    document.getElementById('adminLink').classList.remove('hidden');
   } else {
-    typingStatusEl.textContent = ''; // Limpa quando ninguém estiver digitando
+    document.getElementById('adminLink').classList.add('hidden');
   }
-});
+}
 
-// Bootstrap da aplicação
-const bootstrap = async () => {
-  try {
-    await signInAnonymously(auth);
-    
-    // 1. Obter dados do usuário para checar ban/block
-    const userSnap = await get(ref(db, `users/${currentUserUid}`));
-    if(!userSnap.exists()){ logError({message: 'Dados de usuário não encontrados.'}); return; }
-    
-    const val = userSnap.val();
-    if(await checkForceLogout(val)){ return; } // Se banido/deslogado, pára
+// FRIEND REQUESTS/DM (minimal implementation)
+const friendRequestsEl = document.getElementById('friendRequests');
+const friendListEl = document.getElementById('friendList');
 
-    // 2. Setar Presença
-    setPresence(true); 
+function roomIdFor(uid1, uid2) {
+    return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
+}
 
-    // 3. Checar Admin
-    await checkAdmin();
+async function watchFriendsAndRequests() {
+    // Implementação simplificada de pedidos de amizade e lista de amigos
+    // Apenas para evitar erros de referência no código existente
+    friendRequestsEl.innerHTML = '<p class="text-xs opacity-70">Sem pedidos de amizade.</p>';
+    friendListEl.innerHTML += '<p class="text-xs opacity-70">Nenhum amigo online.</p>';
+}
 
-    statusEl.textContent = 'Pronto';
-  } catch (e) { logError(e); statusEl.textContent = 'Erro'; }
-};
-bootstrap();
-
-// Logout
-document.getElementById('logout').onclick = async (e) => {
-  e.preventDefault();
-  try {
-    setPresence(false);
-    await signOut(auth);
-    localStorage.clear();
+// BOOTSTRAP
+async function bootstrap() {
+  if (!currentUserUid || !currentUsername) {
     location.href = 'index.html';
-  } catch (e) { console.warn(e); }
-};
+    return;
+  }
+  
+  // 1. Ensure Auth State
+  await signInAnonymously(auth);
+  
+  currentUsernameDisplay.textContent = currentUsername;
 
+  // 2. Setup Listeners
+  setupPresence();
+  setupTyping();
+  setupOnlineUsersList();
+  watchForceLogout();
+  watchFriendsAndRequests();
+  
+  // 3. Load Messages
+  loadAndListenGlobal();
+
+  // Logout Handler
+  logoutBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      showToast('Desconectando...', 'warning'); // CORREÇÃO DE ALERT
+      await signOut(auth);
+      localStorage.clear();
+      location.href = 'index.html';
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+bootstrap();
 </script>
 </body>
 </html>
