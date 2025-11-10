@@ -9,7 +9,7 @@
 <body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex items-center justify-center">
   <div class="w-full max-w-md p-6 bg-[#111318] rounded-lg shadow-lg">
     <h2 class="text-xl font-semibold mb-4">Entrar</h2>
-    <label class="text-xs opacity-70">Nome</label>
+    <label class="text-xs opacity-70">Nome de Usuário</label>
     <input id="username" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-3" />
     <label class="text-xs opacity-70">Senha</label>
     <input id="password" type="password" class="w-full p-2 rounded bg-[#0f1418] border border-gray-700 mb-4" />
@@ -22,7 +22,6 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-// IMPORT ATUALIZADO: Adiciona 'update'
 import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
@@ -41,7 +40,6 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// tenta iniciar auth anônima no load, mas a correção principal está no clique
 signInAnonymously(auth).catch(()=>{});
 
 const uEl = document.getElementById('username');
@@ -61,11 +59,12 @@ btn.addEventListener('click', async () => {
   msg.textContent = '';
   const username = uEl.value.trim();
   const password = pEl.value;
-  if(!username || password.length < 4){ msg.textContent = 'Nome e senha (mín 4 caracteres).'; return; }
+
+  if(!username || !password){ msg.textContent = 'Preencha usuário e senha.'; return; }
 
   try {
-    // 1. GARANTE O LOGOUT E LIMPEZA DE SESSÃO ANTERIOR (CORREÇÃO DO BUG)
-    await signOut(auth).catch(()=>{}); 
+    // CORREÇÃO DO BUG: Limpa sessão anterior e força re-login
+    await signOut(auth).catch(() => {});
     localStorage.clear();
 
     const unameKey = username.toLowerCase();
@@ -74,9 +73,7 @@ btn.addEventListener('click', async () => {
 
     const uid = usernameSnap.val();
     const userSnap = await get(ref(db, `users/${uid}`));
-    
-    // Verifica a existência do nó após a limpeza de sessão
-    if(!userSnap.exists()){ msg.textContent = 'Usuário inválido: dados não encontrados no database.'; return; }
+    if(!userSnap.exists()){ msg.textContent = 'Usuário inválido.'; return; }
 
     const user = userSnap.val();
     if(user.isBanned){ msg.textContent = 'Conta banida.'; return; }
@@ -84,13 +81,13 @@ btn.addEventListener('click', async () => {
     const hash = await hashPassword(username, password);
     if(hash !== user.passwordHash){ msg.textContent = 'Senha incorreta.'; return; }
 
-    // 2. INICIA NOVA AUTENTICAÇÃO ANÔNIMA
-    await signInAnonymously(auth).catch(()=>{});
-
-    // 3. ATUALIZA A ÚLTIMA ATIVIDADE
+    // Re-autentica anonimamente
+    await signInAnonymously(auth).catch(() => {});
+    
+    // Atualiza a última atividade
     await update(ref(db, `users/${uid}`), { lastSeen: Date.now() });
 
-    // 4. SALVA INFORMAÇÕES DA SESSÃO LOCALMENTE
+    // Salva informações da sessão localmente
     localStorage.setItem('chat_user_uid', uid);
     localStorage.setItem('chat_user_username', user.username);
     
@@ -103,7 +100,6 @@ btn.addEventListener('click', async () => {
   }
 });
 
-// ensure logout link (if present) clears fully
 document.addEventListener('click', (e)=>{
   const tgt = e.target;
   if(tgt && tgt.matches && tgt.matches('a[href="index.html"], #logout')){
