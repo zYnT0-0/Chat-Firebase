@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Login — Chat</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Entrar — Chat</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-[#0d1117] text-[#c9d1d9] min-h-screen flex items-center justify-center">
@@ -23,26 +23,29 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
 import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
 const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
+  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  authDomain: "chat-firebase-efcbe.firebaseapp.com",
+  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  projectId: "chat-firebase-efcbe",
+  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+  messagingSenderId: "376919463932",
+  appId: "1:376919463932:web:4b2139df551d0a026ac479",
+  measurementId: "G-R14XVTJBFL"
 };
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+
+// ensure anonymous auth so reads that require auth work
 signInAnonymously(auth).catch(()=>{});
 
 const uEl = document.getElementById('username');
 const pEl = document.getElementById('password');
+const btn = document.getElementById('btnLogin');
 const msg = document.getElementById('msg');
 
 async function hashPassword(username, password){
@@ -53,31 +56,51 @@ async function hashPassword(username, password){
   return hashArray.map(b => b.toString(16).padStart(2,'0')).join('');
 }
 
-document.getElementById('btnLogin').addEventListener('click', async () => {
+btn.addEventListener('click', async () => {
   msg.textContent = '';
   const username = uEl.value.trim();
   const password = pEl.value;
   if(!username || !password){ msg.textContent = 'Preencha os campos.'; return; }
 
-  const unameKey = username.toLowerCase();
-  const usernameSnap = await get(ref(db, `usernames/${unameKey}`));
-  if(!usernameSnap.exists()){ msg.textContent = 'Usuário não encontrado.'; return; }
+  try {
+    const unameKey = username.toLowerCase();
+    const usernameSnap = await get(ref(db, `usernames/${unameKey}`));
+    if(!usernameSnap.exists()){ msg.textContent = 'Usuário não encontrado.'; return; }
 
-  const uid = usernameSnap.val();
-  const userSnap = await get(ref(db, `users/${uid}`));
-  if(!userSnap.exists()){ msg.textContent = 'Usuário inválido.'; return; }
+    const uid = usernameSnap.val();
+    const userSnap = await get(ref(db, `users/${uid}`));
+    if(!userSnap.exists()){ msg.textContent = 'Usuário inválido.'; return; }
 
-  const user = userSnap.val();
-  if(user.isBanned){ msg.textContent = 'Conta banida.'; return; }
+    const user = userSnap.val();
+    if(user.isBanned){ msg.textContent = 'Conta banida.'; return; }
 
-  const hash = await hashPassword(username, password);
-  if(hash !== user.passwordHash){ msg.textContent = 'Senha incorreta.'; return; }
+    const hash = await hashPassword(username, password);
+    if(hash !== user.passwordHash){ msg.textContent = 'Senha incorreta.'; return; }
 
-  localStorage.setItem('chat_user_uid', uid);
-  localStorage.setItem('chat_user_username', user.username);
-  msg.style.color = 'lightgreen';
-  msg.textContent = 'Entrando...';
-  setTimeout(()=> location.href = 'chat.html', 600);
+    // login: sign in anonymously (ensures auth.currentUser exists for rules)
+    await signInAnonymously(auth).catch(()=>{});
+    // save session info locally (app logic uses this)
+    localStorage.setItem('chat_user_uid', uid);
+    localStorage.setItem('chat_user_username', user.username);
+    msg.style.color = 'lightgreen';
+    msg.textContent = 'Entrando...';
+    setTimeout(()=> location.href = 'chat.html', 600);
+  } catch (err) {
+    console.error(err);
+    msg.textContent = 'Erro ao fazer login.';
+  }
+});
+
+// ensure logout link (if present) clears fully
+document.addEventListener('click', (e)=>{
+  const tgt = e.target;
+  if(tgt && tgt.matches && tgt.matches('a[href="index.html"], #logout')){
+    e.preventDefault();
+    signOut(auth).catch(()=>{});
+    localStorage.clear();
+    sessionStorage.clear();
+    location.href = 'index.html';
+  }
 });
 </script>
 </body>
