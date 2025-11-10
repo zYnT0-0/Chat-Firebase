@@ -1,12 +1,19 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Perfil</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-[#0d1117] text-[#c9d1d9] p-6">
-<a href="chat.html" class="text-sm text-gray-400 hover:text-white mb-4 block">&larr; Voltar ao Chat</a>
-<h2 class="text-lg mb-3">Perfil do Usuário</h2>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Perfil</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0d1117] text-[#c9d1d9] p-6">
+<h2 class="text-lg mb-3">Perfil</h2>
 <div id="info" class="bg-[#111318] p-4 rounded"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, onValue } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+
 const firebaseConfig = {
   "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
   "authDomain": "chat-firebase-efcbe.firebaseapp.com",
@@ -14,38 +21,77 @@ const firebaseConfig = {
   "projectId": "chat-firebase-efcbe",
   "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
   "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
+  "appId": "1:376919463932:web:4b2100d024467d169d2d09"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-signInAnonymously(auth).catch((e)=>{ console.error("Erro na autenticação anônima:", e); });
+const info = document.getElementById('info');
+const urlParams = new URLSearchParams(window.location.search);
+const currentUserUid = localStorage.getItem('chat_user_uid');
 
-const uid = localStorage.getItem('chat_user_uid');
-if(!uid) location.href='index.html';
+// Se a URL não tiver UID, ou se for o perfil do próprio usuário
+const targetUid = urlParams.get('uid') || currentUserUid; 
 
-onValue(ref(db, `users/${uid}`), async (userSnap) => {
-    if(!userSnap.exists()) return; 
-    const u = userSnap.val();
-    
-    const statusSnap = await get(ref(db, `status/${uid}`));
-    const status = statusSnap.exists() ? statusSnap.val() : null;
-    const adminSnap = await get(ref(db, `admins/${uid}`));
-    const isAdmin = adminSnap.exists() && adminSnap.val() === true;
+const showProfile = (uid, user) => {
+    // 1. CONSTRÓI STATUS DE PUNIÇÃO
+    let banStatus = '';
+    if (user.isBanned) {
+        banStatus = ' (banido permanentemente)';
+    } else if (user.isBlocked) {
+        banStatus = ' (silenciado)';
+    }
 
-    const statusText = status && status.state === 'online' ? 
-        '<span class="text-green-500">🟢 Online</span>' : 
-        `<span class="text-red-500">🔴 Offline</span>`;
-        
-    document.getElementById('info').innerHTML = `
-        <p class="mb-2"><strong>Nome de Usuário:</strong> ${u.username}</p>
-        <p class="mb-2"><strong>Status:</strong> ${statusText}</p>
-        <p class="mb-2"><strong>Função:</strong> ${isAdmin ? '<span class="text-red-400">Administrador</span>' : 'Membro'}</p>
-        <p class="text-xs text-gray-500"><strong>UID:</strong> ${uid}</p>
-        <p class="text-xs text-red-500 mt-2">${u.isBanned ? '🔨 BANIDO' : ''}${u.isBlocked ? ' | 🤫 SILENCIADO' : ''}</p>
+    // 2. CORRIGE STATUS ONLINE/OFFLINE (Online se lastSeen for nos últimos 60 segundos)
+    const isOnline = user.lastSeen && (Date.now() - user.lastSeen < 60000);
+    const statusClass = isOnline ? 'text-green-500' : 'text-red-500';
+    const statusText = isOnline ? 'Online' : 'Offline';
+
+    // 3. RENDERIZA (Com segurança e status)
+    info.innerHTML = `
+        <p class="text-lg font-semibold">${user.username}${banStatus}</p>
+        <p class="text-sm opacity-80">
+            Status: <span class="${statusClass}">${statusText}</span>
+        </p>
+        <p class="text-sm opacity-70 mt-2">Membro desde: ${new Date(user.createdAt).toLocaleDateString()}</p>
+        <p class="text-xs opacity-50 mt-4">
+            UID: ${uid === currentUserUid ? uid : 'Privado (Seguro)'} 
+        </p>
     `;
-});
+    
+    // Se o perfil for de outro usuário, adicione botões de ação (ex: adicionar amigo)
+    if (uid !== currentUserUid) {
+        // Exemplo de botão
+        const friendBtn = document.createElement('button');
+        friendBtn.className = 'bg-blue-600 hover:bg-blue-700 text-white p-2 rounded mt-3';
+        friendBtn.textContent = 'Adicionar Amigo';
+        friendBtn.onclick = () => alert('Funcionalidade de Amizade (DM) Ativada!');
+        info.appendChild(friendBtn);
+    }
+};
+
+const bootstrap = async () => {
+  if (!targetUid) {
+    info.textContent = 'Erro: Perfil não especificado.';
+    return;
+  }
+  
+  // Garante autenticação anônima para leitura (Necessário para as regras de segurança)
+  await signInAnonymously(auth).catch((e)=>{ console.warn("Anon Auth failed:", e); });
+
+  const userSnap = await get(ref(db, `users/${targetUid}`));
+  if (userSnap.exists()) {
+    // Busca status online/offline do nó /status
+    const statusSnap = await get(ref(db, `status/${targetUid}`));
+    const userData = { ...userSnap.val(), ...statusSnap.val() }; // Combina os dados
+    
+    showProfile(targetUid, userData);
+  } else {
+    info.textContent = 'Perfil não encontrado.';
+  }
+};
+bootstrap();
 </script>
-</body></html>
+</body>
+</html>
