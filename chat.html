@@ -24,6 +24,30 @@
   .meta .time{font-size:11px; opacity:.8}
   .msg-bubble .actions{margin-top:8px; display:flex; gap:8px}
   .small-btn{padding:2px 6px; border-radius:4px; font-size:11px}
+  /* Estilos para Alertas TOAST */
+  .alert-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--panel); 
+    color: var(--muted);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    transition: opacity 0.3s, transform 0.3s;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  .alert-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .alert-toast.danger {
+    background: #ef4444; /* Vermelho */
+    color: white;
+  }
+
   
   /* Desktop friends list */
   .desktop-friends{width:280px; flex-shrink:0; background:var(--panel); border-left:1px solid #2d3748; padding:10px; display:none}
