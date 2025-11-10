@@ -1,10 +1,11 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Perfil</title><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-[#0d1117] text-[#c9d1d9] p-6">
-<h2 class="text-lg mb-3">Perfil</h2>
+<a href="chat.html" class="text-sm text-gray-400 hover:text-white mb-4 block">&larr; Voltar ao Chat</a>
+<h2 class="text-lg mb-3">Perfil do Usuário</h2>
 <div id="info" class="bg-[#111318] p-4 rounded"></div>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getDatabase, ref, get, onValue } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 const firebaseConfig = {
   "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
@@ -19,9 +20,32 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
+
+signInAnonymously(auth).catch((e)=>{ console.error("Erro na autenticação anônima:", e); });
+
 const uid = localStorage.getItem('chat_user_uid');
 if(!uid) location.href='index.html';
-(async function(){ const s = await get(ref(db, `users/${uid}`)); if(!s.exists()) return; const u = s.val(); document.getElementById('info').innerHTML = `<strong>${u.username}</strong><p>Online: (status not shown here)</p>`; })();
+
+onValue(ref(db, `users/${uid}`), async (userSnap) => {
+    if(!userSnap.exists()) return; 
+    const u = userSnap.val();
+    
+    const statusSnap = await get(ref(db, `status/${uid}`));
+    const status = statusSnap.exists() ? statusSnap.val() : null;
+    const adminSnap = await get(ref(db, `admins/${uid}`));
+    const isAdmin = adminSnap.exists() && adminSnap.val() === true;
+
+    const statusText = status && status.state === 'online' ? 
+        '<span class="text-green-500">🟢 Online</span>' : 
+        `<span class="text-red-500">🔴 Offline</span>`;
+        
+    document.getElementById('info').innerHTML = `
+        <p class="mb-2"><strong>Nome de Usuário:</strong> ${u.username}</p>
+        <p class="mb-2"><strong>Status:</strong> ${statusText}</p>
+        <p class="mb-2"><strong>Função:</strong> ${isAdmin ? '<span class="text-red-400">Administrador</span>' : 'Membro'}</p>
+        <p class="text-xs text-gray-500"><strong>UID:</strong> ${uid}</p>
+        <p class="text-xs text-red-500 mt-2">${u.isBanned ? '🔨 BANIDO' : ''}${u.isBlocked ? ' | 🤫 SILENCIADO' : ''}</p>
+    `;
+});
 </script>
 </body></html>
