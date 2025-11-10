@@ -14,223 +14,244 @@
   .success{ background:#10b981; color:white }
   .table-row{ display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.02); }
   .avatar{ width:36px; height:36px; border-radius:8px; background:#1f2937; display:flex; align-items:center; justify-content:center; font-weight:700; color:#e6eef8; }
-  .status-dot{ width:10px; height:10px; border-radius:50%; margin-left:auto; }
-  .online{ background:#10b981; }
-  .offline{ background:#ef4444; }
+  .status-dot{ width:10px; height:10px; border-radius:50% }
+  .small{ font-size:13px; opacity:0.8 }
+  pre{ max-height:240px; overflow:auto; background:#071022; padding:8px; border-radius:6px; font-size:12px }
+  .admin-status{ min-height: 20px; font-size: 14px; margin-top: 10px; }
 </style>
 </head>
-<body class="p-4">
-
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-2xl font-bold">Painel de Administração</h1>
-    <a id="logout" href="#" class="btn danger">Sair</a>
-</div>
-
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class="card">
-        <h3 class="text-lg font-semibold mb-3">Status do DB</h3>
-        <div id="dbStats" class="text-sm space-y-2">
-            <p>Total de Usuários: <span id="totalUsers">...</span></p>
-            <p>Usuários Online: <span id="onlineUsers">...</span></p>
-            <p>Mensagens: <span id="totalMessages">...</span></p>
-            <button id="btnRefresh" class="btn muted mt-2">Atualizar Estatísticas</button>
-        </div>
+<body class="p-6">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-bold">Painel Admin — Chat</h1>
+    <div>
+      <a href="chat.html" class="text-sm text-gray-300 mr-3">Voltar ao Chat</a>
+      <a id="logout" class="text-sm text-red-400" href="#">Sair</a>
     </div>
-    
-    <div class="card md:col-span-2">
-        <h3 class="text-lg font-semibold mb-3">Gerenciamento de Usuários</h3>
-        <div class="flex gap-2 mb-3">
-            <input id="adminSearch" type="text" placeholder="Buscar usuário por nome ou UID..." class="flex-1 p-2 rounded bg-[#0b0f14] border border-gray-700 focus:outline-none" />
-            <button id="btnListUsers" class="btn success">Carregar Usuários</button>
-        </div>
-        <div id="searchResults" class="max-h-60 overflow-y-auto text-sm space-y-1">
-            </div>
-    </div>
-</div>
+  </header>
 
-<div id="userCard" class="card mt-6 hidden">
-    <h3 class="text-xl font-bold mb-4">Detalhes do Usuário: <span id="selectedUsername">...</span></h3>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div id="selectedInfo" class="text-sm space-y-2">
-            </div>
-        <div id="selectedActions" class="flex flex-col gap-2">
-            </div>
+  <div class="grid grid-cols-3 gap-4">
+    <div class="col-span-1 space-y-4">
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Busca rápida</h3>
+        <input id="adminSearch" placeholder="procure por nome ou uid..." class="w-full p-2 rounded bg-[#0b1220] border border-gray-700 mb-2" />
+        <div id="searchResults" class="space-y-2"></div>
+      </div>
+
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Ações globais</h3>
+        <button id="btnListUsers" class="btn muted w-full mb-2">Carregar todos os usuários</button>
+        <button id="btnRefresh" class="btn w-full mb-2">Atualizar dados</button>
+        <div class="small">Última atualização: <span id="lastUpdate">—</span></div>
+      </div>
+
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Info do DB</h3>
+        <div id="dbStats" class="small">Carregando...</div>
+      </div>
+      <div id="adminFeedback" class="admin-status text-green-400"></div>
     </div>
-</div>
+
+    <div class="col-span-1 card">
+      <h3 class="text-sm font-semibold mb-2">Usuários (tempo real)</h3>
+      <div id="usersList" style="max-height:70vh; overflow:auto"></div>
+    </div>
+
+    <div class="col-span-1 card">
+      <h3 class="text-sm font-semibold mb-2">Dados do usuário selecionado</h3>
+      <div id="selectedInfo">
+        <div class="small">Selecione um usuário à esquerda.</div>
+      </div>
+      <div class="mt-3" id="selectedActions"></div>
+    </div>
+  </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, set, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getDatabase, ref, get, onValue, update, remove, set, child } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
 
-// Configuração do Firebase
 const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2100d024467d169d2d09"
+  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  authDomain: "chat-firebase-efcbe.firebaseapp.com",
+  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  projectId: "chat-firebase-efcbe",
+  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+  messagingSenderId: "376919463932",
+  appId: "1:376919463932:web:4b2139df551d0a026ac479",
+  measurementId: "G-R14XVTJBFL"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-const currentUserUid = localStorage.getItem('chat_user_uid');
-const isAdmin = JSON.parse(localStorage.getItem('chat_is_admin') || 'false');
+let adminUid = localStorage.getItem('chat_user_uid');
 
-if (!currentUserUid || !isAdmin) {
-    alert('Acesso negado.');
-    location.href = 'index.html';
-}
-
-const totalUsersEl = document.getElementById('totalUsers');
-const onlineUsersEl = document.getElementById('onlineUsers');
-const totalMessagesEl = document.getElementById('totalMessages');
-const adminSearch = document.getElementById('adminSearch');
-const searchResults = document.getElementById('searchResults');
-const userCard = document.getElementById('userCard');
-const selectedUsernameEl = document.getElementById('selectedUsername');
+const usersListEl = document.getElementById('usersList');
 const selectedInfo = document.getElementById('selectedInfo');
 const selectedActions = document.getElementById('selectedActions');
+const dbStats = document.getElementById('dbStats');
+const lastUpdate = document.getElementById('lastUpdate');
+const adminSearch = document.getElementById('adminSearch');
+const searchResults = document.getElementById('searchResults');
 const btnListUsers = document.getElementById('btnListUsers');
 const btnRefresh = document.getElementById('btnRefresh');
+const logout = document.getElementById('logout');
+const adminFeedback = document.getElementById('adminFeedback');
 
+function el(tag, cls){ const e = document.createElement(tag); if(cls) e.className = cls; return e; }
+function formatDate(ts){ try{ return new Date(ts).toLocaleString('pt-BR'); }catch(e){ return '-' } }
+function showFeedback(message, isError = false) {
+    adminFeedback.textContent = message;
+    adminFeedback.style.color = isError ? '#ef4444' : '#10b981';
+    setTimeout(() => adminFeedback.textContent = '', 4000);
+}
+
+// verify admin
+async function checkAdminAndBootstrap(){
+  const uid = localStorage.getItem('chat_user_uid');
+  if(!uid){ location.href = 'index.html'; return; }
+  
+  await signInAnonymously(auth); // Ensure auth for DB rules
+  const adm = await get(ref(db, `admins/${uid}`));
+  if(!adm.exists() || adm.val() !== true){
+    selectedInfo.innerHTML = '<div class="text-red-400">Acesso negado. Você não é admin.</div>';
+    return;
+  }
+  adminUid = uid;
+  selectedInfo.innerHTML = '<div class="small">Autenticado como admin: <strong>' + uid + '</strong></div>';
+  attachUsersListener();
+  updateDBStats();
+}
+
+// real-time users listener
 let usersSnapCache = {};
+function attachUsersListener(){
+  onValue(ref(db, 'users'), snap=>{
+    usersListEl.innerHTML = '';
+    usersSnapCache = snap.exists() ? snap.val() : {};
+    Object.keys(usersSnapCache).forEach(uid=>{
+      const u = usersSnapCache[uid] || {};
+      const row = el('div','table-row cursor-pointer hover:bg-gray-700/20 transition-colors');
+      const avatar = el('div','avatar'); avatar.textContent = (u.username || uid).slice(0,2).toUpperCase();
+      const meta = el('div','flex-1');
+      
+      let statusText = '';
+      if(u.isBanned) statusText = ' (BANIDO)';
+      else if(u.isBlocked) statusText = ' (SILENCIADO)';
 
-const el = (tag, classes) => {
-    const element = document.createElement(tag);
-    if(classes) element.className = classes;
-    return element;
-};
+      const name = el('div'); name.textContent = (u.username || uid) + statusText;
 
-// =========================================================================
-// FUNÇÕES DE ADMIN
-// =========================================================================
+      const small = el('div','small'); small.textContent = `uid: ${uid}`;
+      const right = el('div','text-right');
+      const statusDot = el('span','status-dot'); 
+      statusDot.style.background = (u.isBanned ? '#ef4444' : (u.lastSeen && Date.now() - u.lastSeen < 120000 ? '#10b981' : '#6b7280'));
+      const last = el('div','small'); last.textContent = 'último: ' + (u.lastSeen ? formatDate(u.lastSeen) : '-');
+      row.appendChild(avatar); meta.appendChild(name); meta.appendChild(small); row.appendChild(meta);
+      right.appendChild(statusDot); right.appendChild(last);
+      row.appendChild(right);
+      row.onclick = ()=> showUserDetails(uid, u);
+      usersListEl.appendChild(row);
+    });
+  });
+}
 
-const updateDBStats = async () => {
+// update DB stats
+async function updateDBStats(){
+  try{
+    const msgs = await get(ref(db,'messages'));
+    const users = await get(ref(db,'users'));
+    dbStats.textContent = `Usuários: ${users.exists()?Object.keys(users.val()).length:0} • Mensagens: ${msgs.exists()?Object.keys(msgs.val()).length:0}`;
+    lastUpdate.textContent = new Date().toLocaleTimeString('pt-BR');
+  }catch(e){ console.error(e); }
+}
+
+// show user details + admin actions
+async function showUserDetails(uid, data){
+  selectedInfo.innerHTML = '';
+  selectedActions.innerHTML = '';
+  
+  const isBanned = data.isBanned || false;
+  const isBlocked = data.isBlocked || false;
+
+  let statusPunição = 'Nenhuma';
+  if (isBanned) statusPunição = '<span class="text-red-400">Banido Permanentemente</span>';
+  else if (isBlocked) statusPunição = '<span class="text-yellow-400">Silenciado</span>';
+
+  const title = el('div','text-sm font-semibold'); title.textContent = data.username || uid;
+  const infoDetails = el('div','small space-y-1 mt-2');
+  infoDetails.innerHTML = `
+    <p>UID: <span class="opacity-70">${uid}</span></p>
+    <p>Membro desde: <span class="opacity-70">${formatDate(data.createdAt)}</span></p>
+    <p>Última Atividade: <span class="opacity-70">${formatDate(data.lastSeen)}</span></p>
+    <p>Punição: ${statusPunição}</p>
+  `;
+  selectedInfo.appendChild(title); 
+  selectedInfo.appendChild(infoDetails);
+  
+  // Ações
+  const banBtn = el('button',`btn ${isBanned ? 'success' : 'danger'} w-full mb-1`); banBtn.textContent = isBanned ? 'Remover Ban' : 'Banir Permanentemente';
+  banBtn.onclick = async ()=>{
+    if(!confirm(`Confirma ${isBanned ? 'REMOVER O BAN de' : 'BANIR'} ${data.username}?`)) return;
     try {
-        const usersSnap = await get(ref(db, 'users'));
-        totalUsersEl.textContent = usersSnap.exists() ? Object.keys(usersSnap.val()).length : 0;
-        
-        const statusSnap = await get(ref(db, 'status'));
-        if (statusSnap.exists()) {
-            const status = statusSnap.val();
-            const onlineCount = Object.values(status).filter(s => s.isOnline).length;
-            onlineUsersEl.textContent = onlineCount;
-        } else {
-            onlineUsersEl.textContent = 0;
-        }
-
-        const messagesSnap = await get(ref(db, 'messages'));
-        totalMessagesEl.textContent = messagesSnap.exists() ? Object.keys(messagesSnap.val()).length : 0;
-    } catch (e) { console.error("Erro ao carregar stats:", e); }
-};
-
-const attachUsersListener = async () => {
-    searchResults.innerHTML = 'Carregando todos os usuários...';
-    try {
-        const snap = await get(ref(db, 'users'));
-        if (snap.exists()) {
-            usersSnapCache = snap.val();
-            searchResults.innerHTML = `Carregados ${Object.keys(usersSnapCache).length} perfis. Use a busca.`;
-        } else {
-            searchResults.innerHTML = 'Nenhum usuário encontrado.';
-        }
-    } catch (e) {
-        console.error("Erro ao carregar usuários:", e);
-        searchResults.innerHTML = 'Erro ao carregar a lista de usuários.';
-    }
-};
-
-const showUserDetails = (uid, user) => {
-    userCard.classList.remove('hidden');
-    selectedUsernameEl.textContent = user.username || uid;
-    selectedInfo.innerHTML = '';
-    selectedActions.innerHTML = '';
-
-    const isBanned = user.isBanned || false;
-    const isBlocked = user.isBlocked || false;
-
-    // Constrói o Status de Punição
-    let statusPunição = 'Nenhuma';
-    if (isBanned) statusPunição = '<span class="text-red-500">Banido Permanentemente</span>';
-    else if (isBlocked) statusPunição = '<span class="text-yellow-500">Silenciado</span>';
-
-    // Info
-    selectedInfo.appendChild(el('p')).innerHTML = `UID: <span class="opacity-70">${uid}</span>`;
-    selectedInfo.appendChild(el('p')).innerHTML = `Nome: <span class="opacity-70">${user.username}</span>`;
-    selectedInfo.appendChild(el('p')).innerHTML = `Membro desde: <span class="opacity-70">${new Date(user.createdAt).toLocaleDateString()}</span>`;
-    selectedInfo.appendChild(el('p')).innerHTML = `Última Atividade: <span class="opacity-70">${user.lastSeen ? new Date(user.lastSeen).toLocaleString() : 'N/A'}</span>`;
-    selectedInfo.appendChild(el('p')).innerHTML = `**Punição:** ${statusPunição}`;
-    
-    // Ações
-    const banBtn = el('button', `btn ${isBanned ? 'success' : 'danger'}`);
-    banBtn.textContent = isBanned ? 'Remover Ban' : 'Banir Permanentemente';
-    banBtn.onclick = async () => {
         const newStatus = !isBanned;
-        await update(ref(db, `users/${uid}`), { isBanned: newStatus, isBlocked: newStatus ? false : isBlocked }); // Ban remove silêncio
-        showUserDetails(uid, { ...user, isBanned: newStatus, isBlocked: newStatus ? false : isBlocked });
-    };
+        await update(ref(db, `users/${uid}`), { isBanned: newStatus, isBlocked: newStatus ? false : isBlocked });
+        showFeedback(`Status de BAN de ${data.username} atualizado.`);
+    } catch(e) { showFeedback('Erro ao atualizar BAN.', true); }
+  };
+  
+  const muteBtn = el('button',`btn ${isBlocked ? 'success' : 'danger'} w-full mb-1`); muteBtn.textContent = isBlocked ? 'Remover Silêncio' : 'Silenciar (Bloquear Chat)';
+  muteBtn.onclick = async ()=>{
+    if(!confirm(`Confirma ${isBlocked ? 'REMOVER O SILÊNCIO de' : 'SILENCIAR'} ${data.username}?`)) return;
+    try {
+        await update(ref(db, `users/${uid}`), { isBlocked: !isBlocked });
+        showFeedback(`Status de SILÊNCIO de ${data.username} atualizado.`);
+    } catch(e) { showFeedback('Erro ao atualizar SILÊNCIO.', true); }
+  };
+  
+  const kickBtn = el('button','btn muted w-full mb-1'); kickBtn.textContent = 'Deslogar (forçar)';
+  kickBtn.onclick = async ()=>{
+    if(!confirm(`Tem certeza que deseja deslogar ${data.username}?`)) return;
+    try {
+        await update(ref(db, `users/${uid}`), { forceLogoutAt: Date.now() });
+        showFeedback(`Solicitado LOGOUT forçado para ${data.username}.`);
+    } catch(e) { showFeedback('Erro ao solicitar LOGOUT.', true); }
+  };
+  
+  const dumpBtn = el('button','btn muted w-full mb-1'); dumpBtn.textContent = 'Ver dados brutos';
+  dumpBtn.onclick = async ()=>{
+    const list = { uid, ...data };
+    selectedInfo.appendChild(el('h4','text-sm mt-3'));
+    const out = el('pre'); out.textContent = JSON.stringify(list, null, 2);
+    selectedInfo.appendChild(out);
+  };
 
-    const muteBtn = el('button', `btn ${isBlocked ? 'success' : 'danger'}`);
-    muteBtn.textContent = isBlocked ? 'Remover Silêncio' : 'Silenciar (Bloquear Chat)';
-    muteBtn.onclick = async () => {
-        const newStatus = !isBlocked;
-        await update(ref(db, `users/${uid}`), { isBlocked: newStatus });
-        showUserDetails(uid, { ...user, isBlocked: newStatus });
-    };
+  selectedActions.appendChild(banBtn);
+  selectedActions.appendChild(muteBtn);
+  selectedActions.appendChild(kickBtn);
+  selectedActions.appendChild(dumpBtn);
+}
 
-    const kickBtn = el('button', 'btn muted');
-    kickBtn.textContent = 'Deslogar Forçadamente';
-    kickBtn.onclick = async () => {
-        if(confirm(`Tem certeza que deseja deslogar ${user.username}?`)){
-            // Usamos Date.now() para forçar o chat.html a reconhecer a mudança
-            await update(ref(db, `users/${uid}`), { forceLogoutAt: Date.now() });
-            alert('Usuário deslogado forçadamente.');
-        }
-    };
-    
-    // Dump data button
-    const dumpBtn = el('button', 'btn muted');
-    dumpBtn.textContent = 'Ver Dados Brutos';
-    dumpBtn.onclick = async () => {
-        const list = { uid, ...user };
-        selectedInfo.appendChild(el('h4','text-sm mt-3')); // spacing
-        const out = el('pre', 'text-xs whitespace-pre-wrap'); 
-        out.textContent = JSON.stringify(list, null, 2);
-        selectedInfo.appendChild(out);
-    };
-
-    selectedActions.appendChild(banBtn);
-    selectedActions.appendChild(muteBtn);
-    selectedActions.appendChild(kickBtn);
-    selectedActions.appendChild(dumpBtn);
-};
-
-// search
+// search (CORRIGIDO: usa Set e exibe status de punição)
 adminSearch.addEventListener('input', async (e)=>{
   const q = e.target.value.trim().toLowerCase();
   searchResults.innerHTML = '';
   if(!q) return;
 
-  const foundUids = new Set(); // USAMOS UM SET PARA GARANTIR UNICIDADE (CORREÇÃO DE BUG)
+  const foundUids = new Set(); 
 
-  // Busca por UID e Username
   for(const uid in usersSnapCache){
     const u = usersSnapCache[uid];
     
     // Constrói o status de punição (Banido/Silenciado)
     let statusText = '';
     if(u.isBanned) {
-      statusText = ' (BANIDO PERMANENTEMENTE)';
+      statusText = ' (BANIDO)';
     } else if(u.isBlocked) {
       statusText = ' (SILENCIADO)';
     }
 
     if((u.username && u.username.toLowerCase().includes(q)) || uid.includes(q)){
-      if (foundUids.has(uid)) continue; // Evita duplicação
+      if (foundUids.has(uid)) continue; 
 
       const row = el('div','table-row cursor-pointer hover:bg-gray-700/20 transition-colors');
       row.textContent = `${u.username || uid}${statusText} — ${uid}`;
@@ -246,19 +267,7 @@ btnListUsers.onclick = ()=> attachUsersListener();
 btnRefresh.onclick = ()=> updateDBStats();
 logout.onclick = async (e)=> { e.preventDefault(); try{ await signOut(auth); localStorage.clear(); location.href = 'index.html'; }catch(e){ console.warn(e); } };
 
-// watch typing flags (to show if any user typing in rooms)
-onValue(ref(db,'typing'), snap=>{
-  // compute if any typing globally (for admin info)
-  const typingStatus = document.getElementById('typingStatusAdmin');
-  if(!typingStatus) return;
-  const rooms = snap.val() || {};
-  const globalTyping = rooms['global'] || {};
-  const count = Object.keys(globalTyping).length;
-  // Apenas uma informação simples para o painel de admin
-  typingStatus.textContent = count > 0 ? `${count} usuário(s) digitando.` : 'Ninguém digitando.';
-});
-
-updateDBStats();
+checkAdminAndBootstrap();
 </script>
 </body>
 </html>
