@@ -22,22 +22,26 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getDatabase, ref, set, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
 const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
+  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  authDomain: "chat-firebase-efcbe.firebaseapp.com",
+  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  projectId: "chat-firebase-efcbe",
+  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+  messagingSenderId: "376919463932",
+  appId: "1:376919463932:web:4b2139df551d0a026ac479",
+  measurementId: "G-R14XVTJBFL"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
+
+// ensure anonymous auth (needed for writes under rules)
+signInAnonymously(auth).catch(()=>{});
 
 const uEl = document.getElementById('username');
 const pEl = document.getElementById('password');
@@ -56,22 +60,17 @@ btn.addEventListener('click', async () => {
   msg.textContent = '';
   const username = uEl.value.trim();
   const password = pEl.value;
-  if(!username || password.length < 4){ msg.textContent = 'Nome e senha (mín 4 caracteres).'; return; }
+  if(!username || password.length < 4){ msg.textContent = 'Nome e senha (min 4)'; return; }
 
   const unameKey = username.toLowerCase();
   try {
     const existing = await get(ref(db, `usernames/${unameKey}`));
     if(existing.exists()){ msg.textContent = 'Nome já existe.'; return; }
 
-    // CORREÇÃO: Encerra qualquer sessão anterior (anônima ou não) para forçar um novo UID.
-    await signOut(auth).catch(() => {});
-    localStorage.clear();
-
-    // Cria uma nova autenticação anônima para obter um UID novo e limpo
+    // ensure we have auth.currentUser (anonymous) to be allowed to write
     await signInAnonymously(auth).catch(()=>{});
     const user = auth.currentUser;
-    if(!user){ msg.textContent = 'Erro: falha ao autenticar para registro. Tente novamente.'; return; }
-    
+    if(!user){ msg.textContent = 'Erro: não autenticado.'; return; }
     const uid = user.uid;
     const hash = await hashPassword(username, password);
     const now = Date.now();
@@ -95,10 +94,10 @@ btn.addEventListener('click', async () => {
 
     msg.style.color = 'lightgreen';
     msg.textContent = 'Conta criada! Entrando...';
-    setTimeout(()=> location.href = 'chat.html', 600);
+    setTimeout(()=> location.href = 'chat.html', 800);
   } catch (err) {
     console.error(err);
-    msg.textContent = 'Erro ao registrar. Tente outro nome.';
+    msg.textContent = 'Erro ao registrar. Verifique as regras do DB.';
   }
 });
 </script>

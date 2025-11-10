@@ -23,64 +23,29 @@ const auth = getAuth(app);
 
 signInAnonymously(auth).catch((e)=>{ console.error("Erro na autenticação anônima:", e); });
 
-const urlParams = new URLSearchParams(window.location.search);
-const currentUserUid = localStorage.getItem('chat_user_uid');
+const uid = localStorage.getItem('chat_user_uid');
+if(!uid) location.href='index.html';
 
-// Se a URL tem 'uid', usa ele como alvo. Senão, usa o logado.
-const targetUid = urlParams.get('uid') || currentUserUid; 
-
-if(!currentUserUid) location.href='index.html';
-if(!targetUid) {
-    document.getElementById('info').innerHTML = 'Perfil não especificado.';
-    throw new Error("Target UID not found.");
-}
-
-// Escuta os dados do usuário ALVO (targetUid)
-onValue(ref(db, `users/${targetUid}`), async (userSnap) => {
-    if(!userSnap.exists()) {
-        document.getElementById('info').innerHTML = 'Perfil não encontrado.';
-        return;
-    }
+onValue(ref(db, `users/${uid}`), async (userSnap) => {
+    if(!userSnap.exists()) return; 
     const u = userSnap.val();
     
-    // Busca status (separadamente)
-    const statusSnap = await get(ref(db, `status/${targetUid}`));
+    const statusSnap = await get(ref(db, `status/${uid}`));
     const status = statusSnap.exists() ? statusSnap.val() : null;
-    const adminSnap = await get(ref(db, `admins/${targetUid}`));
+    const adminSnap = await get(ref(db, `admins/${uid}`));
     const isAdmin = adminSnap.exists() && adminSnap.val() === true;
-    
-    // Calcula status online/offline
-    const isOnline = status && status.state === 'online';
-    const statusText = isOnline ? 
+
+    const statusText = status && status.state === 'online' ? 
         '<span class="text-green-500">🟢 Online</span>' : 
         `<span class="text-red-500">🔴 Offline</span>`;
-
-    // Verifica punição
-    let banStatus = '';
-    if (u.isBanned) banStatus = ' <span class="text-red-400">(BANIDO)</span>';
-    else if (u.isBlocked) banStatus = ' <span class="text-yellow-400">(SILENCIADO)</span>';
         
-    // CORREÇÃO DE VAZAMENTO DE UID: O UID nunca é exibido, nem para o próprio usuário.
-    const uidDisplay = 'Privado (Seguro)'; 
-
     document.getElementById('info').innerHTML = `
-        <p class="mb-2"><strong>Nome de Usuário:</strong> ${u.username}${banStatus} ${isAdmin ? '<span class="text-blue-400">(ADMIN)</span>' : ''}</p>
+        <p class="mb-2"><strong>Nome de Usuário:</strong> ${u.username}</p>
         <p class="mb-2"><strong>Status:</strong> ${statusText}</p>
-        <p class="text-xs opacity-50 mt-4"><strong>UID:</strong> ${uidDisplay}</p>
-        `;
-    
-    // Ações para perfis de outros usuários (exemplo)
-    if (targetUid !== currentUserUid) {
-        let actionButtons = document.getElementById('actionButtons');
-        if (!actionButtons) {
-            actionButtons = document.createElement('div');
-            actionButtons.id = 'actionButtons';
-            document.getElementById('info').appendChild(actionButtons);
-        }
-        actionButtons.innerHTML = `
-            <button class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded mt-3 text-sm">Adicionar Amigo (DM)</button>
-        `;
-    }
+        <p class="mb-2"><strong>Função:</strong> ${isAdmin ? '<span class="text-red-400">Administrador</span>' : 'Membro'}</p>
+        <p class="text-xs text-gray-500"><strong>UID:</strong> ${uid}</p>
+        <p class="text-xs text-red-500 mt-2">${u.isBanned ? '🔨 BANIDO' : ''}${u.isBlocked ? ' | 🤫 SILENCIADO' : ''}</p>
+    `;
 });
 </script>
 </body></html>

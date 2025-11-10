@@ -21,56 +21,152 @@
   .msg-bubble{display:inline-block; word-break:break-word; white-space:pre-wrap; border-radius:12px; padding:12px; box-shadow: 0 2px 6px rgba(0,0,0,.35)}
   .meta{font-size:12px; opacity:.78; margin-bottom:6px; display:flex; gap:10px; align-items:center}
   .meta .who{font-weight:600}
-  .meta .time{font-size:11px; opacity:.6}
-  .msg-mine{background:var(--mine); color:white; align-self:flex-end}
-  .msg-other{background:var(--other); color:var(--muted); align-self:flex-start}
-  .sidebar{width:250px; flex-shrink:0; background:var(--panel); border-right:1px solid #1f2937; padding:15px; display:flex; flex-direction:column; gap:10px}
-  .typing{font-size:12px; opacity:.7}
-  .online-user{padding:8px; background:#1f2937; border-radius:6px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;}
-  .online-user:hover{background:#2a3447}
-  .status-dot{width:8px; height:8px; border-radius:50%; margin-left:8px}
+  .meta .time{font-size:11px; opacity:.8}
+  .msg-bubble .actions{margin-top:8px; display:flex; gap:8px}
+  .small-btn{padding:2px 6px; border-radius:4px; font-size:11px}
+  /* Estilos para Alertas TOAST */
+  .alert-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--panel); 
+    color: var(--muted);
+    padding: 12px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    z-index: 1000;
+    transition: opacity 0.3s, transform 0.3s;
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  .alert-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .alert-toast.danger {
+    background: #ef4444; /* Vermelho */
+    color: white;
+  }
+
+  
+  /* Desktop friends list */
+  .desktop-friends{width:280px; flex-shrink:0; background:var(--panel); border-left:1px solid #2d3748; padding:10px; display:none}
+  @media (min-width: 1024px){.desktop-friends{display:block}.main-chat-area{max-width:calc(100% - 280px)}}
+  
+  /* Mobile overlay for friends */
+  .friends-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.8); z-index:100; display:none; justify-content:flex-end}
+  .friends-panel{width:85%; max-width:320px; background:var(--panel); height:100%; padding:15px; overflow-y:auto}
+  @media (max-width: 1023px){.friends-overlay.active{display:flex}}
 </style>
 </head>
+
 <body>
 <div class="chat-container">
-  <div class="sidebar">
-    <div class="flex justify-between items-center mb-4">
-      <h3 id="currentUsernameDisplay" class="font-bold text-lg text-blue-400">...</h3>
-      <a id="logout" href="#" class="text-sm text-red-400 hover:text-red-300">Sair</a>
-    </div>
-    <div id="statusEl" class="text-sm">Carregando...</div>
-    <div id="adminLink" class="text-sm text-yellow-400 hidden"><a href="admin.html" class="hover:underline">Painel Admin</a></div>
-    <div id="friendRequests" class="text-sm space-y-2"></div>
+    
+    <div class="main-chat-area">
+        <div class="p-3 bg-gray-900 flex justify-between items-center border-b border-gray-700 sticky top-0 z-10">
+            <div class="flex gap-2">
+                <button id="tabGlobal" class="px-3 py-1 rounded bg-gray-800 text-white text-sm">Global</button>
+                <button id="tabDM" class="px-3 py-1 rounded bg-gray-700 text-gray-300 text-sm">DM</button>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="status" class="text-sm">Carregando...</span>
+                <button id="friendsToggle" class="relative text-white lg:hidden">
+                    Amigos 
+                    <span id="notifCount" class="absolute -top-1 -right-1 bg-red-600 text-xs rounded-full w-4 h-4 leading-4 text-center">0</span>
+                </button>
+            </div>
+        </div>
 
-    <h4 class="text-sm font-semibold mt-4">Online (Global)</h4>
-    <div id="onlineUsersList" class="space-y-1 overflow-y-auto flex-grow"></div>
-    <div id="friendList" class="mt-4 border-t border-gray-700 pt-2 space-y-1">
-      <h4 class="text-sm font-semibold">Amigos (DM)</h4>
+        <div id="messages" class="messages">
+            <div class="text-gray-400 text-center mt-6">Conectando ao chat...</div>
+        </div>
+
+        <div id="typingNotice" class="text-xs p-2 text-gray-500 min-h-[20px]"></div>
+
+        <div class="p-3 bg-gray-900 border-t border-gray-700">
+            <div class="mb-2 flex justify-between items-center text-xs">
+                <span id="sendMode" class="text-gray-400">Modo: Global</span>
+                <span class="text-gray-500 flex gap-3">
+                    <a href="profile.html" class="text-xs hover:text-white">Meu Perfil</a>
+                    <a id="adminLink" href="admin.html" class="text-xs text-red-400 hover:text-red-300 hidden">Admin</a>
+                    <a id="logoutLink" href="#" class="text-xs text-red-500 hover:text-red-400">Sair</a>
+                </span>
+            </div>
+            <div class="flex gap-2">
+                <textarea id="messageInput" placeholder="Sua mensagem (suporta Markdown)" rows="1" class="flex-grow p-2 rounded bg-gray-800 border border-gray-700 focus:ring-blue-500 focus:border-blue-500 resize-none"></textarea>
+                <button id="sendBtn" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Enviar</button>
+            </div>
+        </div>
     </div>
-  </div>
-  
-  <div class="main-chat-area">
-    <div id="messages" class="messages">
-      </div>
-    <div id="typingIndicator" class="typing px-4 pb-2 text-sm">Ninguém digitando.</div>
-    <div id="blockMessage" class="px-4 py-3 bg-red-800 text-white text-sm text-center hidden">
-      Você está silenciado pelo administrador. Não é possível enviar mensagens.
+    
+    <div class="desktop-friends">
+        <h3 class="font-semibold text-lg mb-4">Amigos e Contatos</h3>
+
+        <div class="mb-4">
+            <h4 class="text-sm mb-2 text-gray-400">Solicitações Pendentes (<span id="notifCountDesktop">0</span>)</h4>
+            <div id="friendRequestsListDesktop" class="space-y-2 text-sm">
+                <div class="text-gray-500 text-xs">Sem solicitações.</div>
+            </div>
+        </div>
+        
+        <div class="mb-4">
+            <h4 class="text-sm mb-2 text-gray-400">Amigos</h4>
+            <div id="friendsAreaDesktop" class="space-y-2 text-sm">
+                <div class="text-gray-500 text-xs">Sem amigos.</div>
+            </div>
+        </div>
+
+        <div>
+            <h4 class="text-sm mb-2 text-gray-400">Buscar Usuário</h4>
+            <input id="friendSearchDesktop" placeholder="Digite 3+ letras" class="w-full p-2 rounded bg-gray-800 border border-gray-700 mb-2 text-sm"/>
+            <div id="recommendationsDesktop" class="space-y-2 text-xs"></div>
+        </div>
     </div>
-    <div class="p-4 border-t border-gray-700 flex gap-2">
-      <input id="messageInput" placeholder="Digite sua mensagem (Max 500 chars, Markdown)." maxlength="500" class="flex-1 p-3 rounded bg-[#0b1220] border border-gray-700 focus:outline-none" />
-      <button id="btnSend" class="bg-blue-600 hover:bg-blue-700 text-white p-3 rounded disabled:opacity-50">Enviar</button>
+
+
+    <div id="friendsOverlay" class="friends-overlay">
+        <div class="friends-panel">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-semibold text-xl">Amigos e Contatos</h3>
+                <button id="closeFriends" class="text-2xl text-gray-400">&times;</button>
+            </div>
+
+            <div class="mb-6">
+                <h4 class="text-sm mb-2 text-gray-400">Solicitações Pendentes (<span id="notifCountMobile">0</span>)</h4>
+                <div id="friendRequestsList" class="space-y-2 text-sm">
+                    <div class="text-gray-500 text-xs">Sem solicitações.</div>
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <h4 class="text-sm mb-2 text-gray-400">Amigos</h4>
+                <div id="friendsArea" class="space-y-2 text-sm">
+                    <div class="text-gray-500 text-xs">Sem amigos.</div>
+                </div>
+            </div>
+
+            <div>
+                <h4 class="text-sm mb-2 text-gray-400">Buscar Usuário</h4>
+                <input id="friendSearch" placeholder="Digite 3+ letras" class="w-full p-2 rounded bg-gray-800 border border-gray-700 mb-2 text-sm"/>
+                <div id="recommendations" class="space-y-2 text-xs"></div>
+            </div>
+
+        </div>
     </div>
-  </div>
 </div>
 
-<div id="toastContainer" class="fixed bottom-4 right-4 space-y-2 z-50">
-    </div>
-
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, push, set, onValue, onChildAdded, onChildChanged, onChildRemoved, serverTimestamp, onDisconnect, update, remove } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+/* chat.html final: Global + DM + friend requests + typing + admin force/logout + blocked write check */
 
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut as fbSignOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import {
+  getDatabase, ref, push, onChildAdded, onChildChanged, onChildRemoved,
+  get, set, update, onValue, remove, off, onDisconnect
+} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
+// CHAVE DE API CORRIGIDA E COMPLETA (a mesma usada no profile.html)
 const firebaseConfig = {
   apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
   authDomain: "chat-firebase-efcbe.firebaseapp.com",
@@ -81,304 +177,493 @@ const firebaseConfig = {
   appId: "1:376919463932:web:4b2139df551d0a026ac479",
   measurementId: "G-R14XVTJBFL"
 };
-
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
 
-// Globals
-let currentUserUid = localStorage.getItem('chat_user_uid');
-let currentUsername = localStorage.getItem('chat_user_username');
-let isBlocked = false;
-let messageQueue = []; // Queue for messages while loading
-
-// DOM Elements
+// UI refs
+const statusEl = document.getElementById('status');
 const messagesEl = document.getElementById('messages');
 const messageInput = document.getElementById('messageInput');
-const btnSend = document.getElementById('btnSend');
-const statusEl = document.getElementById('statusEl');
-const logoutBtn = document.getElementById('logout');
-const typingIndicator = document.getElementById('typingIndicator');
-const onlineUsersList = document.getElementById('onlineUsersList');
-const blockMessage = document.getElementById('blockMessage');
-const currentUsernameDisplay = document.getElementById('currentUsernameDisplay');
+const sendBtn = document.getElementById('sendBtn');
+const sendModeEl = document.getElementById('sendMode');
+const typingNotice = document.getElementById('typingNotice');
 
-// CORREÇÃO DE ALERTS: Função de Toast estilizada
-function showToast(message, type = 'blue') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    let bgColor = 'bg-blue-600';
-    if(type === 'error') bgColor = 'bg-red-600';
-    if(type === 'success') bgColor = 'bg-green-600';
-    if(type === 'warning') bgColor = 'bg-yellow-600';
+const friendsToggle = document.getElementById('friendsToggle');
+const friendsOverlay = document.getElementById('friendsOverlay');
+const closeFriends = document.getElementById('closeFriends');
 
-    toast.className = `${bgColor} text-white p-3 rounded shadow-lg text-sm transition-opacity duration-300 opacity-90`;
-    toast.textContent = message;
-    container.appendChild(toast);
-    
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.addEventListener('transitionend', () => toast.remove());
-    }, 4000);
-}
+const friendSearch = document.getElementById('friendSearch');
+const friendSearchDesktop = document.getElementById('friendSearchDesktop');
+const recommendations = document.getElementById('recommendations');
+const recommendationsDesktop = document.getElementById('recommendationsDesktop');
+const friendsArea = document.getElementById('friendsArea');
+const friendsAreaDesktop = document.getElementById('friendsAreaDesktop');
+const friendRequestsList = document.getElementById('friendRequestsList');
+const friendRequestsListDesktop = document.getElementById('friendRequestsListDesktop');
 
-// Utility to handle safe rendering of message content
-function renderMessage(text) {
-  const safeHtml = DOMPurify.sanitize(marked.parse(text));
-  return safeHtml;
-}
+const tabGlobal = document.getElementById('tabGlobal');
+const tabDM = document.getElementById('tabDM');
+const adminLink = document.getElementById('adminLink');
+const notifCountEl = document.getElementById('notifCount');
+const notifCountElDesktop = document.getElementById('notifCountDesktop');
+const logoutLink = document.getElementById('logoutLink');
 
-// Utility to force scroll to bottom
-function scrollToBottom() {
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
+let currentUserUid = localStorage.getItem('chat_user_uid') || null;
+let currentUsername = localStorage.getItem('chat_user_username') || 'Anônimo';
+let authUid = null;
+let currentRoomId = null; // null = global
+let markedParse = window.marked;
 
-// Utility for formatting time
-function formatTime(timestamp) {
-  try { return new Date(timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); } 
-  catch(e) { return 'N/A'; }
-}
-
-// RENDER MESSAGE
-function addMessageToDOM(msg, key) {
-  if (document.getElementById(`msg-${key}`)) return;
-
-  const isMine = msg.uid === currentUserUid;
-  const bubble = document.createElement('div');
-  bubble.id = `msg-${key}`;
-  bubble.className = isMine ? 'msg-mine msg-bubble' : 'msg-other msg-bubble';
-  
-  const meta = document.createElement('div');
-  meta.className = 'meta';
-  
-  const who = document.createElement('span');
-  who.className = 'who';
-  who.textContent = msg.username || 'Usuário Desconhecido';
-  
-  const time = document.createElement('span');
-  time.className = 'time';
-  time.textContent = formatTime(msg.timestamp);
-
-  meta.appendChild(who);
-  meta.appendChild(time);
-  bubble.appendChild(meta);
-  
-  const content = document.createElement('div');
-  content.innerHTML = renderMessage(msg.text);
-  bubble.appendChild(content);
-
-  messagesEl.appendChild(bubble);
-  scrollToBottom();
-}
-
-// LOAD AND LISTEN GLOBAL MESSAGES
-async function loadAndListenGlobal() {
-  const messagesRef = ref(db, 'messages');
-  onChildAdded(messagesRef, (data) => {
-    addMessageToDOM(data.val(), data.key);
-    // Process queued messages once the system is ready
-    if(messageQueue.length > 0) {
-        messageQueue.forEach(m => addMessageToDOM(m.val(), m.key));
-        messageQueue = [];
-    }
-  }, (error) => {
-    console.error("Erro ao carregar mensagens:", error);
-    showToast('Erro ao carregar o histórico de mensagens.', 'error'); // CORREÇÃO DE ALERT
-  });
-}
-
-// SEND MESSAGE
-btnSend.addEventListener('click', async () => {
-  if(isBlocked) {
-    showToast('Você está silenciado e não pode enviar mensagens.', 'warning'); // CORREÇÃO DE ALERT
-    return;
-  }
-  const text = messageInput.value.trim();
-  if (text === '') return;
-
-  const newMessageRef = push(ref(db, 'messages'));
-  try {
-    await set(newMessageRef, {
-      uid: currentUserUid,
-      username: currentUsername,
-      text: text,
-      timestamp: serverTimestamp()
-    });
-    messageInput.value = '';
-    // After sending, clear typing status
-    set(ref(db, `typing/global/${currentUserUid}`), null);
-  } catch (e) {
-    console.error("Erro ao enviar mensagem:", e);
-    showToast('Erro ao enviar mensagem.', 'error'); // CORREÇÃO DE ALERT
-  }
+// usernames cache
+let allUsernames = {};
+onValue(ref(db, 'usernames'), snap=>{
+  allUsernames = snap.exists() ? snap.val() : {};
+  // refresh recommendations if user is typing in search
+  const active = document.activeElement;
+  if(active === friendSearch){ doSearchAndRender(active.value, recommendations); }
+  if(active === friendSearchDesktop){ doSearchAndRender(active.value, recommendationsDesktop); }
 });
 
-// PRESENCE (ONLINE STATUS)
-function setupPresence() {
-  onValue(ref(db, '.info/connected'), (snap) => {
-    if (snap.val() === true) {
-      // Set user status to online and set up onDisconnect
-      set(ref(db, `status/${currentUserUid}`), { state: 'online', last_changed: Date.now() });
-      onDisconnect(ref(db, `status/${currentUserUid}`)).set({ state: 'offline', last_changed: Date.now() });
-      statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
-    } else {
-      statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
+// helpers
+function renderMarkdown(md){ const html = markedParse.parse(md||''); return DOMPurify.sanitize(html); }
+function timeStr(ts){ try{ return new Date(ts).toLocaleTimeString(); }catch(e){ return ''; } }
+function logError(e){ console.error('CHAT ERROR', e); }
+
+// message element (omitted for brevity, assume original logic is fine)
+function createMessageElement(id, data, isPrivate=false){
+  // (Full element creation logic as provided in previous steps)
+  const wrapper = document.createElement('div');
+  wrapper.className = 'fade flex';
+  wrapper.style.justifyContent = (data.userId === currentUserUid) ? 'flex-end' : 'flex-start';
+  wrapper.dataset.msgId = id;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.style.background = (data.userId === currentUserUid) ? 'var(--mine)' : 'var(--other)';
+  bubble.style.color = (data.userId === currentUserUid) ? 'white' : '#d6dbe3';
+  bubble.style.maxWidth = '78%';
+
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const who = document.createElement('div'); who.className = 'who'; who.textContent = data.username || 'Anônimo';
+  const t = document.createElement('div'); t.className = 'time'; t.textContent = (data.timestamp ? `• ${timeStr(data.timestamp)}` : '');
+  meta.appendChild(who); meta.appendChild(t);
+
+  const content = document.createElement('div'); content.className = 'content'; content.innerHTML = renderMarkdown(data.text || '');
+
+  bubble.appendChild(meta); bubble.appendChild(content);
+
+  if(data.userId === currentUserUid){
+    const actions = document.createElement('div'); actions.className = 'actions';
+    const editBtn = document.createElement('button'); editBtn.className = 'small-btn text-xs text-gray-200'; editBtn.textContent = 'editar';
+    const delBtn = document.createElement('button'); delBtn.className = 'small-btn text-xs text-red-400'; delBtn.textContent = 'apagar';
+
+    const openModal = (title, content, onConfirm, confirmOnly=false)=>{ /* (modal function not included for brevity, assumed it exists or is simple pop-up) */ };
+
+    editBtn.onclick = ()=> {
+      const newText = prompt('Editar mensagem:', data.text);
+      if(!newText.trim()) return;
+      const path = isPrivate ? `privateMessages/${currentRoomId}/messages/${id}` : `messages/${id}`;
+      update(ref(db, path), { text:newText, editedAt: Date.now() }).catch(logError);
+    };
+
+    delBtn.onclick = ()=> {
+      if(!confirm('Tem certeza que deseja apagar esta mensagem?')) return;
+      const path = isPrivate ? `privateMessages/${currentRoomId}/messages/${id}` : `messages/${id}`;
+      remove(ref(db, path)).catch(logError);
+    };
+
+    actions.appendChild(editBtn); actions.appendChild(delBtn);
+    bubble.appendChild(actions);
+  }
+
+  wrapper.appendChild(bubble);
+  return wrapper;
+}
+// END message element logic
+
+// typing
+let typingTimeout = null;
+function setTyping(isTyping){
+  const room = currentRoomId || 'global';
+  const tRef = ref(db, `typing/${room}/${currentUserUid}`);
+  if(isTyping){
+    set(tRef, { uid: currentUserUid, username: currentUsername, at: Date.now() }).catch(()=>{});
+    if(typingTimeout) clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(()=> { remove(tRef).catch(()=>{}); }, 4000);
+  } else {
+    remove(tRef).catch(()=>{});
+    if(typingTimeout) clearTimeout(typingTimeout);
+  }
+}
+
+messageInput.addEventListener('input', ()=> { setTyping(true); });
+window.addEventListener('blur', ()=> setTyping(false));
+window.addEventListener('beforeunload', ()=> setTyping(false));
+
+// watch typing in a room (keeps single listener)
+let typingWatchRef = null;
+function watchTypingForRoom(roomId){
+  if(typingWatchRef) off(typingWatchRef);
+  const rr = ref(db, `typing/${roomId}`);
+  typingWatchRef = rr;
+  onValue(rr, snap=>{
+    const obj = snap.val() || {};
+    const others = Object.values(obj).filter(o => o.uid !== currentUserUid);
+    if(others.length === 0){ typingNotice.textContent = ''; return; }
+    const names = others.slice(0,3).map(o => o.username || o.uid);
+    typingNotice.textContent = names.join(', ') + (others.length > 1 ? ' estão digitando...' : ' está digitando...');
+  });
+}
+
+// listeners management for private rooms
+let currentPrivateRef = null;
+function detachPrivateListeners(){
+  if(currentPrivateRef) { try{ off(currentPrivateRef); }catch(e){} currentPrivateRef = null; }
+}
+
+// global listeners (attach once)
+let globalListenerAttached = false;
+let displayedGlobal = new Set();
+
+async function loadAndListenGlobal(){
+  try{
+    const refGlobal = ref(db, 'messages');
+    // initial load
+    const snap = await get(refGlobal);
+    messagesEl.innerHTML = '';
+    displayedGlobal.clear();
+    if(snap.exists()){
+      const data = snap.val();
+      const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
+      for(const k of keys){ displayedGlobal.add(k); messagesEl.appendChild(createMessageElement(k, data[k], false)); }
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else messagesEl.innerHTML = '<div class="text-gray-400 text-center">Sem mensagens públicas.</div>';
+
+    if(!globalListenerAttached){
+      onChildAdded(refGlobal, s=>{
+        const id = s.key;
+        if(displayedGlobal.has(id)) return;
+        displayedGlobal.add(id);
+        messagesEl.appendChild(createMessageElement(id, s.val(), false));
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      });
+      onChildChanged(refGlobal, s=>{
+        const id = s.key;
+        const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+        if(n) n.replaceWith(createMessageElement(id, s.val(), false));
+      });
+      onChildRemoved(refGlobal, s=>{
+        const id = s.key;
+        const n = messagesEl.querySelector(`[data-msg-id="${id}"]`);
+        if(n) n.remove();
+        displayedGlobal.delete(id);
+      });
+      globalListenerAttached = true;
+    }
+    // watch typing on global
+    watchTypingForRoom('global');
+  }catch(e){ logError(e); }
+}
+
+// private room listener
+async function listenPrivate(roomId){
+  try{
+    detachPrivateListeners();
+    currentPrivateRef = ref(db, `privateMessages/${roomId}/messages`);
+    const snap = await get(currentPrivateRef);
+    messagesEl.innerHTML = '';
+    if(snap.exists()){
+      const data = snap.val();
+      const keys = Object.keys(data).sort((a,b)=> (data[a].timestamp||0) - (data[b].timestamp||0));
+      for(const k of keys) messagesEl.appendChild(createMessageElement(k, data[k], true));
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    } else messagesEl.innerHTML = '<div class="text-gray-400 text-center">Sem mensagens nessa conversa.</div>';
+
+    onChildAdded(currentPrivateRef, s=>{
+      if(messagesEl.querySelector(`[data-msg-id="${s.key}"]`)) return;
+      messagesEl.appendChild(createMessageElement(s.key, s.val(), true));
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+    onChildChanged(currentPrivateRef, s=>{
+      const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
+      if(n) n.replaceWith(createMessageElement(s.key, s.val(), true));
+    });
+    onChildRemoved(currentPrivateRef, s=>{
+      const n = messagesEl.querySelector(`[data-msg-id="${s.key}"]`);
+      if(n) n.remove();
+    });
+    watchTypingForRoom(roomId);
+  }catch(e){ logError(e); }
+}
+
+// deterministic room ID
+function roomIdFor(a,b){ return [a,b].sort().join('_'); }
+
+// ensure auth
+async function ensureAuth(){
+  return new Promise((resolve)=>{
+    if(auth.currentUser){ resolve(auth.currentUser); return; }
+    const unsub = onAuthStateChanged(auth, (user)=>{
+      if(user){ unsub(); resolve(user); }
+    });
+    signInAnonymously(auth).catch((e)=> console.warn('signInAnonymously failed', e));
+  });
+}
+
+// force logout listener (admin action)
+function watchForceLogout(){
+  const fRef = ref(db, `users/${currentUserUid}/forceLogoutAt`);
+  onValue(fRef, async snap=>{
+    if(!snap.exists()) return;
+    const ts = snap.val();
+    if(ts > (Date.now() - 3000)){ // Check if timestamp is recent (prevents old flags from triggering)
+      alert('Você foi deslogado pelo administrador.');
+      try{ await fbSignOut(auth); }catch(e){}
+      localStorage.clear();
+      location.href = 'index.html';
     }
   });
 }
 
-// TYPING INDICATOR
-function setupTyping() {
-  let typingUsers = {};
-
-  messageInput.addEventListener('input', () => {
-    if (messageInput.value.length > 0) {
-      set(ref(db, `typing/global/${currentUserUid}`), currentUsername);
-    } else {
-      set(ref(db, `typing/global/${currentUserUid}`), null);
-    }
-  });
-
-  onValue(ref(db, 'typing/global'), (snap) => {
-    typingUsers = snap.val() || {};
-    const names = Object.entries(typingUsers)
-      .filter(([uid, name]) => uid !== currentUserUid)
-      .map(([uid, name]) => name);
-
-    if (names.length > 0) {
-      typingIndicator.textContent = names.join(', ') + (names.length === 1 ? ' está digitando...' : ' estão digitando...');
-    } else {
-      typingIndicator.textContent = 'Ninguém digitando.';
-    }
-  });
-}
-
-// ONLINE USERS LIST
-function setupOnlineUsersList() {
-  onValue(ref(db, 'status'), async (snap) => {
-    onlineUsersList.innerHTML = '';
-    const statuses = snap.val() || {};
-    const uids = Object.keys(statuses).filter(uid => statuses[uid].state === 'online' && uid !== currentUserUid);
-
-    for (const uid of uids) {
-      const status = statuses[uid];
-      const userSnap = await get(ref(db, `users/${uid}`));
-      if (!userSnap.exists()) continue;
-
-      const user = userSnap.val();
-      const userEl = document.createElement('div');
-      userEl.className = 'online-user';
-      userEl.innerHTML = `
-        <span>${user.username}</span>
-        <span class="status-dot bg-green-500"></span>
-      `;
-      userEl.onclick = () => window.open(`profile.html?uid=${uid}`, '_blank');
-      onlineUsersList.appendChild(userEl);
-    }
-  });
-}
-
-// ADMIN LINK & FORCE LOGOUT
-async function watchForceLogout() {
-  const userRef = ref(db, `users/${currentUserUid}`);
-  onValue(userRef, (snap) => {
-    const user = snap.val();
-    if (!user) return;
+// friends UI loaders
+async function loadFriendsUI(snap){
+  try{
+    if(!currentUserUid) return; 
+    const f = snap && snap.exists() ? snap.val() : {};
     
-    // Check for isBlocked
-    const wasBlocked = isBlocked;
-    isBlocked = user.isBlocked || false;
+    const renderList = (el, friendsObj)=>{
+      el.innerHTML = '';
+      const uids = Object.keys(friendsObj);
+      if(uids.length === 0){ el.innerHTML = '<div class="text-gray-500 text-xs">Sem amigos.</div>'; return; }
+
+      for(const uid of uids){
+        const name = friendsObj[uid].username || uid;
+        const btn = document.createElement('button'); btn.className = 'w-full text-left px-3 py-2 bg-gray-800 rounded hover:bg-gray-700 transition-colors'; btn.textContent = name;
+        btn.onclick = ()=> openPrivateWith(uid, name);
+        el.appendChild(btn);
+      }
+    };
+    // Fetch current friends list if snap is not provided (e.g., initial load)
+    const s = snap || await get(ref(db, `users/${currentUserUid}/friends`));
+    const friendsObj = s.exists() ? s.val() : {};
+
+    renderList(friendsArea, friendsObj);
+    renderList(friendsAreaDesktop, friendsObj);
     
-    if (isBlocked) {
-      messageInput.disabled = true;
-      btnSend.disabled = true;
-      blockMessage.classList.remove('hidden');
-      if(!wasBlocked) showToast('Você foi silenciado por um administrador.', 'warning'); // CORREÇÃO DE ALERT
-    } else {
-      messageInput.disabled = false;
-      btnSend.disabled = false;
-      blockMessage.classList.add('hidden');
-      if(wasBlocked) showToast('Seu silêncio foi removido. Você pode voltar a falar.', 'success'); // CORREÇÃO DE ALERT
+  }catch(e){ logError(e); }
+}
+
+// watch friends and requests
+function watchFriendsAndRequests(){
+    if(!currentUserUid) return;
+
+    // Watch friends list
+    onValue(ref(db, `users/${currentUserUid}/friends`), loadFriendsUI);
+
+    // Watch requests
+    onValue(ref(db, `friendRequests/${currentUserUid}`), snap=>{
+      const count = snap.exists() ? Object.keys(snap.val()).length : 0;
+      notifCountEl.textContent = count;
+      notifCountElDesktop.textContent = count;
+      renderFriendRequests(snap, friendRequestsList);
+      renderFriendRequests(snap, friendRequestsListDesktop);
+    });
+}
+
+//friend requests rendering and listeners//
+function renderFriendRequests(snap, outEl){
+  outEl.innerHTML = '';
+  if(!snap.exists()){ outEl.innerHTML = '<div class="text-gray-500 text-xs">Sem solicitações.</div>'; return; }
+  const reqs = snap.val();
+  for(const fromUid in reqs){
+    const r = reqs[fromUid];
+    const row = document.createElement('div');
+    row.className = 'request-row p-2 bg-[#111318] rounded border border-gray-700 flex justify-between items-center';
+    const name = document.createElement('div'); name.textContent = r.username || fromUid;
+    const actions = document.createElement('div');
+    const accept = document.createElement('button'); accept.textContent='Aceitar'; accept.className='small-btn bg-blue-600 text-white mr-2 hover:bg-blue-700';
+    const decline = document.createElement('button'); decline.textContent='Recusar'; decline.className='small-btn bg-gray-700 text-white hover:bg-gray-600';
+    
+    accept.onclick = async ()=>{
+      try{
+        const fromSnap = await get(ref(db, `users/${fromUid}`));
+        const fromName = fromSnap.exists() ? fromSnap.val().username : 'Amigo';
+        await set(ref(db, `users/${currentUserUid}/friends/${fromUid}`), { username: fromName, addedAt: Date.now() });
+        await set(ref(db, `users/${fromUid}/friends/${currentUserUid}`), { username: currentUsername, addedAt: Date.now() });
+        const id = roomIdFor(currentUserUid, fromUid);
+        await update(ref(db, `privateMessages/${id}/participants`), { [currentUserUid]: true, [fromUid]: true });
+        await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`));
+      }catch(e){ logError(e); alert('Erro ao aceitar'); }
+    };
+    decline.onclick = async ()=> { try{ await remove(ref(db, `friendRequests/${currentUserUid}/${fromUid}`)); }catch(e){ logError(e); alert('Erro ao recusar'); } };
+    
+    actions.appendChild(accept); actions.appendChild(decline);
+    row.appendChild(name); row.appendChild(actions);
+    outEl.appendChild(row);
+  }
+}
+
+// search recommendations 
+function doSearchAndRender(q, outEl){
+  outEl.innerHTML = '';
+  if(!q || q.length < 3) return;
+  const low = q.toLowerCase();
+  let added = 0;
+  for(const unameKey of Object.keys(allUsernames)){
+    if(added >= 12) break;
+    if(unameKey.includes(low) && unameKey !== currentUsername.toLowerCase()){
+      const uid = allUsernames[unameKey];
+      if(uid === currentUserUid) continue;
+      
+      const row = document.createElement('div'); row.className='p-2 bg-[#111318] rounded flex justify-between items-center';
+      const name = document.createElement('div'); name.textContent = unameKey; 
+      
+      const addBtn = document.createElement('button'); addBtn.textContent = 'Adicionar'; addBtn.className = 'small-btn bg-blue-600 text-white hover:bg-blue-700';
+      addBtn.onclick = async ()=>{
+        try{
+          await set(ref(db, `friendRequests/${uid}/${currentUserUid}`), { username: currentUsername, from: currentUserUid, at: Date.now() });
+          addBtn.textContent = 'Enviado';
+        }catch(e){ logError(e); addBtn.textContent = 'Erro'; }
+      };
+      row.appendChild(name); row.appendChild(addBtn); outEl.appendChild(row);
+      added++;
+    }
+  }
+}
+
+friendSearch.addEventListener('input', e => doSearchAndRender(e.target.value, recommendations));
+friendSearchDesktop.addEventListener('input', e => doSearchAndRender(e.target.value, recommendationsDesktop));
+
+// open private chat
+async function openPrivateWith(uid, username){
+  try{
+    const id = roomIdFor(currentUserUid, uid);
+    // ensure participants exist (DB rules allow this write only if current user is participant)
+    const pRef = ref(db, `privateMessages/${id}/participants`);
+    await update(pRef, { [currentUserUid]: true, [uid]: true });
+
+    currentRoomId = id;
+    sendModeEl.textContent = `Modo: DM (${username})`;
+    await listenPrivate(id);
+    tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800');
+    friendsOverlay.style.display = 'none'; // Close overlay on mobile
+  }catch(e){ logError(e); alert('Erro ao abrir DM: ' + e.message); }
+}
+
+// send message (check blocked/ban and write to correct path)
+sendBtn.addEventListener('click', async ()=>{
+  const text = messageInput.value.trim();
+  if(!text) return;
+  
+  try{
+    // block/banned check
+    const userSnap = await get(ref(db, `users/${currentUserUid}`));
+    if(userSnap.exists()){
+      const u = userSnap.val();
+      if(u.isBanned){ alert('Você foi banido e não pode enviar mensagens.'); return; }
+      if(u.isBlocked){ alert('Você foi silenciado pelo administrador e não pode enviar mensagens.'); return; }
     }
 
-    // Check for forceLogoutAt
-    if (user.forceLogoutAt) {
-      if (Date.now() - user.forceLogoutAt < 5000) { // Check if flag is recent
-        showToast('Você foi desconectado forçadamente por um administrador.', 'error'); // CORREÇÃO DE ALERT
-        setTimeout(() => {
-          signOut(auth);
-          localStorage.clear();
-          location.href = 'index.html';
-        }, 1500);
+    const messageData = { userId: currentUserUid, username: currentUsername, text, timestamp: Date.now() };
+
+    if(currentRoomId){
+      await push(ref(db, `privateMessages/${currentRoomId}/messages`), messageData);
+    } else {
+      await push(ref(db, 'messages'), messageData);
+    }
+    
+    messageInput.value = '';
+    setTyping(false);
+  }catch(e){ logError(e); alert('Erro ao enviar mensagem.'); }
+});
+
+// tabs behavior
+tabGlobal.addEventListener('click', async ()=>{
+  currentRoomId = null;
+  sendModeEl.textContent = 'Modo: Global';
+  tabGlobal.classList.add('bg-gray-800'); tabDM.classList.remove('bg-gray-800');
+  detachPrivateListeners();
+  await loadAndListenGlobal();
+});
+
+tabDM.addEventListener('click', ()=>{ 
+    currentRoomId = 'DM-Placeholder'; 
+    sendModeEl.textContent = 'Modo: DM';
+    tabDM.classList.add('bg-gray-800'); tabGlobal.classList.remove('bg-gray-800'); 
+    detachPrivateListeners();
+    messagesEl.innerHTML = '<div class="text-gray-400 text-center">Selecione um amigo na lista para iniciar uma conversa privada.</div>'; 
+});
+
+// Mobile/Overlay Handlers
+friendsToggle.addEventListener('click', ()=> { friendsOverlay.style.display = 'flex'; });
+closeFriends.addEventListener('click', ()=> { friendsOverlay.style.display = 'none'; });
+
+// logout (full sign out)
+logoutLink.addEventListener('click', async (e)=>{
+  e.preventDefault();
+  setTyping(false); 
+  try{ await fbSignOut(auth); }catch(e){ console.warn('signOut error', e); }
+  localStorage.clear(); sessionStorage.clear();
+  setTimeout(()=> location.href = 'index.html', 150);
+});
+
+// watch admin status to show admin link
+async function displayAdminIf(uid){
+  try{
+    if(!uid) return;
+    const adm = await get(ref(db, `admins/${uid}`));
+    if(adm.exists() && adm.val() === true) adminLink.classList.remove('hidden');
+    else adminLink.classList.add('hidden');
+  }catch(e){ logError(e); }
+}
+
+// auth bootstrap
+async function bootstrap(){
+  try{
+    const user = await ensureAuth();
+    authUid = user.uid;
+    
+    // Check if local UID matches auth UID, if not, update.
+    if(!currentUserUid || currentUserUid !== authUid){
+      currentUserUid = authUid;
+      localStorage.setItem('chat_user_uid', currentUserUid);
+      // Force reload username if UID changes (e.g., first login)
+      const userSnap = await get(ref(db, `users/${currentUserUid}`));
+      if(userSnap.exists()) {
+        currentUsername = userSnap.val().username;
+        localStorage.setItem('chat_user_username', currentUsername);
       }
     }
     
-    // Admin link visibility
+    statusEl.textContent = 'Carregando...';
+
+    // start global messages
+    await loadAndListenGlobal();
+
+    // presence tracking
+    onValue(ref(db, '.info/connected'), snap=>{
+      if(snap.val() === true){
+        try{ 
+          set(ref(db, `status/${currentUserUid}`), { state:'online', last_changed: Date.now() }); 
+          onDisconnect(ref(db, `status/${currentUserUid}`)).set({ state:'offline', last_changed: Date.now() }); 
+        }catch(e){}
+        statusEl.innerHTML = '<span class="text-green-500">🟢 Online</span>';
+      } else statusEl.innerHTML = '<span class="text-red-500">🔴 Offline</span>';
+    });
+    
+    // watch force logout flag and admin status
+    watchForceLogout();
     displayAdminIf(currentUserUid);
-  });
+
+    // initial friends UI and listeners
+    watchFriendsAndRequests();
+
+    statusEl.textContent = 'Pronto';
+  }catch(e){ logError(e); statusEl.textContent = 'Erro'; }
 }
-
-async function displayAdminIf(uid) {
-  const adminSnap = await get(ref(db, `admins/${uid}`));
-  if (adminSnap.exists() && adminSnap.val() === true) {
-    document.getElementById('adminLink').classList.remove('hidden');
-  } else {
-    document.getElementById('adminLink').classList.add('hidden');
-  }
-}
-
-// FRIEND REQUESTS/DM (minimal implementation)
-const friendRequestsEl = document.getElementById('friendRequests');
-const friendListEl = document.getElementById('friendList');
-
-function roomIdFor(uid1, uid2) {
-    return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
-}
-
-async function watchFriendsAndRequests() {
-    // Implementação simplificada de pedidos de amizade e lista de amigos
-    // Apenas para evitar erros de referência no código existente
-    friendRequestsEl.innerHTML = '<p class="text-xs opacity-70">Sem pedidos de amizade.</p>';
-    friendListEl.innerHTML += '<p class="text-xs opacity-70">Nenhum amigo online.</p>';
-}
-
-// BOOTSTRAP
-async function bootstrap() {
-  if (!currentUserUid || !currentUsername) {
-    location.href = 'index.html';
-    return;
-  }
-  
-  // 1. Ensure Auth State
-  await signInAnonymously(auth);
-  
-  currentUsernameDisplay.textContent = currentUsername;
-
-  // 2. Setup Listeners
-  setupPresence();
-  setupTyping();
-  setupOnlineUsersList();
-  watchForceLogout();
-  watchFriendsAndRequests();
-  
-  // 3. Load Messages
-  loadAndListenGlobal();
-
-  // Logout Handler
-  logoutBtn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    try {
-      showToast('Desconectando...', 'warning'); // CORREÇÃO DE ALERT
-      await signOut(auth);
-      localStorage.clear();
-      location.href = 'index.html';
-    } catch (e) {
-      console.error(e);
-    }
-  });
-}
-
 bootstrap();
+
 </script>
 </body>
 </html>
