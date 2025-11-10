@@ -1,28 +1,243 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Admin</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-[#0d1117] text-[#c9d1d9] p-6">
-<h1>Admin</h1>
-<div id="users"></div>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Painel Admin — Chat</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{ background:#0b0f14; color:#cbd5e1; font-family:Inter,system-ui; }
+  .card{ background:#0f1724; border:1px solid rgba(255,255,255,0.03); padding:12px; border-radius:10px; }
+  .btn{ padding:6px 10px; border-radius:8px; font-size:13px }
+  .danger{ background:#ef4444; color:white }
+  .muted{ background:#374151; color:white }
+  .success{ background:#10b981; color:white }
+  .table-row{ display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.02); }
+  .avatar{ width:36px; height:36px; border-radius:8px; background:#1f2937; display:flex; align-items:center; justify-content:center; font-weight:700; color:#e6eef8; }
+  .status-dot{ width:10px; height:10px; border-radius:50% }
+  .typing{ font-style:italic; color:#93c5fd; font-size:13px }
+  .small{ font-size:13px; opacity:0.8 }
+  pre{ max-height:240px; overflow:auto; background:#071022; padding:8px; border-radius:6px; font-size:12px }
+</style>
+</head>
+<body class="p-6">
+  <header class="mb-4 flex items-center justify-between">
+    <h1 class="text-xl font-bold">Painel Admin — Chat</h1>
+    <div>
+      <a href="chat.html" class="text-sm text-gray-300 mr-3">Voltar ao Chat</a>
+      <a id="logout" class="text-sm text-red-400" href="#">Sair</a>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-3 gap-4">
+    <!-- Left: controls -->
+    <div class="col-span-1 space-y-4">
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Busca rápida</h3>
+        <input id="adminSearch" placeholder="procure por nome ou uid..." class="w-full p-2 rounded bg-[#0b1220] border border-gray-700 mb-2" />
+        <div id="searchResults" class="space-y-2"></div>
+      </div>
+
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Ações globais</h3>
+        <button id="btnListUsers" class="btn muted w-full mb-2">Carregar todos os usuários</button>
+        <button id="btnRefresh" class="btn w-full mb-2">Atualizar dados</button>
+        <div class="small">Última atualização: <span id="lastUpdate">—</span></div>
+      </div>
+
+      <div class="card">
+        <h3 class="text-sm font-semibold mb-2">Info do DB</h3>
+        <div id="dbStats" class="small">Carregando...</div>
+      </div>
+    </div>
+
+    <!-- Middle: users list -->
+    <div class="col-span-1 card">
+      <h3 class="text-sm font-semibold mb-2">Usuários (tempo real)</h3>
+      <div id="usersList" style="max-height:70vh; overflow:auto"></div>
+    </div>
+
+    <!-- Right: user details -->
+    <div class="col-span-1 card">
+      <h3 class="text-sm font-semibold mb-2">Dados do usuário selecionado</h3>
+      <div id="selectedInfo">
+        <div class="small">Selecione um usuário à esquerda.</div>
+      </div>
+      <div class="mt-3" id="selectedActions"></div>
+    </div>
+  </div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getDatabase, ref, get, onValue, update, remove, set, child } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+
 const firebaseConfig = {
-  "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
-  "authDomain": "chat-firebase-efcbe.firebaseapp.com",
-  "databaseURL": "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
-  "projectId": "chat-firebase-efcbe",
-  "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
-  "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
+  apiKey: "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
+  authDomain: "chat-firebase-efcbe.firebaseapp.com",
+  databaseURL: "https://chat-firebase-efcbe-default-rtdb.firebaseio.com",
+  projectId: "chat-firebase-efcbe",
+  storageBucket: "chat-firebase-efcbe.firebasestorage.app",
+  messagingSenderId: "376919463932",
+  appId: "1:376919463932:web:4b2139df551d0a026ac479",
+  measurementId: "G-R14XVTJBFL"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-signInAnonymously(auth).catch(()=>{});
-const myUid = localStorage.getItem('chat_user_uid');
-if(!myUid) location.href='index.html';
-(async function(){ const adm = await get(ref(db, `admins/${myUid}`)); if(!adm.exists()||adm.val()!==true){ document.getElementById('users').innerHTML='Acesso negado.'; return; } const s = await get(ref(db,'users')); if(!s.exists()) return; const u = s.val(); const area = document.getElementById('users'); area.innerHTML=''; Object.keys(u).forEach(uid=>{ const row = document.createElement('div'); row.innerHTML = `<strong>${u[uid].username}</strong> <button data-uid="${uid}">Ver</button>`; area.appendChild(row); }); })();
+
+let adminUid = localStorage.getItem('chat_user_uid');
+if(!adminUid){
+  // attempt anonymous to allow reading admins node (we'll check)
+  signInAnonymously(auth).catch(e=>console.warn(e));
+}
+
+const usersListEl = document.getElementById('usersList');
+const selectedInfo = document.getElementById('selectedInfo');
+const selectedActions = document.getElementById('selectedActions');
+const dbStats = document.getElementById('dbStats');
+const lastUpdate = document.getElementById('lastUpdate');
+const adminSearch = document.getElementById('adminSearch');
+const searchResults = document.getElementById('searchResults');
+const btnListUsers = document.getElementById('btnListUsers');
+const btnRefresh = document.getElementById('btnRefresh');
+const logout = document.getElementById('logout');
+
+function el(tag, cls){ const e = document.createElement(tag); if(cls) e.className = cls; return e; }
+
+function formatDate(ts){ try{ return new Date(ts).toLocaleString(); }catch(e){ return '-' } }
+
+// verify admin
+async function checkAdminAndBootstrap(){
+  const uid = localStorage.getItem('chat_user_uid');
+  if(!uid){ selectedInfo.innerHTML = '<div class="text-red-400">Você não está logado como admin.</div>'; return; }
+  const adm = await get(ref(db, `admins/${uid}`));
+  if(!adm.exists() || adm.val() !== true){
+    selectedInfo.innerHTML = '<div class="text-red-400">Acesso negado. Você não é admin.</div>';
+    return;
+  }
+  adminUid = uid;
+  selectedInfo.innerHTML = '<div class="small">Autenticado como admin: <strong>' + uid + '</strong></div>';
+  attachUsersListener();
+  updateDBStats();
+}
+
+// real-time users listener
+let usersSnapCache = {};
+function attachUsersListener(){
+  onValue(ref(db, 'users'), snap=>{
+    usersListEl.innerHTML = '';
+    usersSnapCache = snap.exists() ? snap.val() : {};
+    Object.keys(usersSnapCache).forEach(uid=>{
+      const u = usersSnapCache[uid] || {};
+      const row = el('div','table-row');
+      const avatar = el('div','avatar'); avatar.textContent = (u.username || uid).slice(0,2).toUpperCase();
+      const meta = el('div','flex-1');
+      const name = el('div'); name.textContent = u.username || uid;
+      const small = el('div','small'); small.textContent = `uid: ${uid}`;
+      const right = el('div','text-right');
+      const statusDot = el('span','status-dot'); statusDot.style.background = (u.isBanned ? '#ef4444' : (u.lastSeen && Date.now() - u.lastSeen < 120000 ? '#10b981' : '#6b7280'));
+      const last = el('div','small'); last.textContent = 'último: ' + (u.lastSeen ? formatDate(u.lastSeen) : '-');
+      row.appendChild(avatar); meta.appendChild(name); meta.appendChild(small); row.appendChild(meta);
+      right.appendChild(statusDot); right.appendChild(last);
+      row.appendChild(right);
+      row.onclick = ()=> showUserDetails(uid, u);
+      usersListEl.appendChild(row);
+    });
+  });
+}
+
+// update DB stats
+async function updateDBStats(){
+  try{
+    const msgs = await get(ref(db,'messages'));
+    const users = await get(ref(db,'users'));
+    dbStats.textContent = `Usuários: ${users.exists()?Object.keys(users.val()).length:0} • Mensagens: ${msgs.exists()?Object.keys(msgs.val()).length:0}`;
+    lastUpdate.textContent = new Date().toLocaleTimeString();
+  }catch(e){ console.error(e); }
+}
+
+// show user details + admin actions
+async function showUserDetails(uid, data){
+  selectedInfo.innerHTML = '';
+  const title = el('div','text-sm font-semibold'); title.textContent = data.username || uid;
+  const pre = el('pre'); pre.textContent = JSON.stringify({ uid, ...data }, null, 2);
+  selectedInfo.appendChild(title); selectedInfo.appendChild(pre);
+
+  selectedActions.innerHTML = '';
+  // Ban/Unban
+  const banBtn = el('button','btn danger'); banBtn.textContent = data.isBanned ? 'Desbanir' : 'Banir';
+  banBtn.onclick = async ()=>{
+    await update(ref(db, `users/${uid}`), { isBanned: !data.isBanned });
+    alert('Atualizado ban.');
+  };
+  // Block write (silenciar)
+  const muteBtn = el('button','btn muted'); muteBtn.textContent = data.isBlocked ? 'Desbloquear escrita' : 'Bloquear escrita';
+  muteBtn.onclick = async ()=>{
+    await update(ref(db, `users/${uid}`), { isBlocked: !data.isBlocked });
+    alert('Atualizado bloqueio.');
+  };
+  // Force logout (set a flag that client watches)
+  const kickBtn = el('button','btn'); kickBtn.textContent = 'Deslogar (forçar)';
+  kickBtn.onclick = async ()=>{
+    // set a flag on user: forceLogout: timestamp
+    await update(ref(db, `users/${uid}`), { forceLogoutAt: Date.now() });
+    // also set status offline
+    await update(ref(db, `status/${uid}`), { state:'offline', last_changed: Date.now() });
+    alert('Solicitado logout forçado.');
+  };
+  // View messages (dump)
+  const dumpBtn = el('button','btn success'); dumpBtn.textContent = 'Ver mensagens';
+  dumpBtn.onclick = async ()=>{
+    const msgsSnap = await get(ref(db,'messages'));
+    let list = [];
+    if(msgsSnap.exists()){
+      const msgs = msgsSnap.val();
+      for(const id in msgs) if(msgs[id].userId === uid) list.push({ id, ...msgs[id] });
+    }
+    selectedInfo.appendChild(el('h4','text-sm mt-3')); // spacing
+    const out = el('pre'); out.textContent = JSON.stringify(list, null, 2);
+    selectedInfo.appendChild(out);
+  };
+
+  selectedActions.appendChild(banBtn);
+  selectedActions.appendChild(muteBtn);
+  selectedActions.appendChild(kickBtn);
+  selectedActions.appendChild(dumpBtn);
+}
+
+// search
+adminSearch.addEventListener('input', async (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  searchResults.innerHTML = '';
+  if(!q) return;
+  // search usersSnapCache and usernames
+  for(const uid in usersSnapCache){
+    const u = usersSnapCache[uid];
+    if((u.username && u.username.toLowerCase().includes(q)) || uid.includes(q)){
+      const row = el('div','table-row');
+      row.textContent = `${u.username || uid} — ${uid}`;
+      row.onclick = ()=> showUserDetails(uid, u);
+      searchResults.appendChild(row);
+    }
+  }
+});
+
+// misc buttons
+btnListUsers.onclick = ()=> attachUsersListener();
+btnRefresh.onclick = ()=> updateDBStats();
+logout.onclick = async (e)=> { e.preventDefault(); try{ await signOut(auth); localStorage.clear(); location.href = 'index.html'; }catch(e){ console.warn(e); } };
+
+// watch typing flags (to show if any user typing in rooms)
+onValue(ref(db,'typing'), snap=>{
+  // compute if any typing globally (for admin info)
+  const t = snap.val() || {};
+  // we won't display globally here but you could show per-room typing
+});
+
+// react to changes so UI updates
+checkAdminAndBootstrap();
+
 </script>
-</body></html>
+</body>
+</html>
