@@ -3,25 +3,67 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Admin - Chat</title>
+<title>Painel Admin — Chat</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{ background:#0b0f14; color:#cbd5e1; font-family:Inter,system-ui; }
+  .card{ background:#0f1724; border:1px solid rgba(255,255,255,0.03); padding:12px; border-radius:10px; }
+  .btn{ padding:6px 10px; border-radius:8px; font-size:13px }
+  .danger{ background:#ef4444; color:white }
+  .muted{ background:#374151; color:white }
+  .success{ background:#10b981; color:white }
+  .table-row{ display:flex; gap:8px; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.02); }
+  .avatar{ width:36px; height:36px; border-radius:8px; background:#1f2937; display:flex; align-items:center; justify-content:center; font-weight:700; color:#e6eef8; }
+  .status-dot{ width:10px; height:10px; border-radius:50%; margin-left:auto; }
+  .online{ background:#10b981; }
+  .offline{ background:#ef4444; }
+</style>
 </head>
-<body class="bg-[#0d1117] text-[#c9d1d9] p-6">
-<h2 class="text-xl mb-4 text-red-400">🚨 Painel de Administração</h2>
+<body class="p-4">
 
-<div class="mb-4">
-    <a href="chat.html" class="text-sm text-gray-400 hover:text-white">&larr; Voltar ao Chat</a>
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">Painel de Administração</h1>
+    <a id="logout" href="#" class="btn danger">Sair</a>
 </div>
 
-<div id="userList" class="space-y-3">
-    <div class="text-gray-500">Carregando usuários...</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="card">
+        <h3 class="text-lg font-semibold mb-3">Status do DB</h3>
+        <div id="dbStats" class="text-sm space-y-2">
+            <p>Total de Usuários: <span id="totalUsers">...</span></p>
+            <p>Usuários Online: <span id="onlineUsers">...</span></p>
+            <p>Mensagens: <span id="totalMessages">...</span></p>
+            <button id="btnRefresh" class="btn muted mt-2">Atualizar Estatísticas</button>
+        </div>
+    </div>
+    
+    <div class="card md:col-span-2">
+        <h3 class="text-lg font-semibold mb-3">Gerenciamento de Usuários</h3>
+        <div class="flex gap-2 mb-3">
+            <input id="adminSearch" type="text" placeholder="Buscar usuário por nome ou UID..." class="flex-1 p-2 rounded bg-[#0b0f14] border border-gray-700 focus:outline-none" />
+            <button id="btnListUsers" class="btn success">Carregar Usuários</button>
+        </div>
+        <div id="searchResults" class="max-h-60 overflow-y-auto text-sm space-y-1">
+            </div>
+    </div>
+</div>
+
+<div id="userCard" class="card mt-6 hidden">
+    <h3 class="text-xl font-bold mb-4">Detalhes do Usuário: <span id="selectedUsername">...</span></h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div id="selectedInfo" class="text-sm space-y-2">
+            </div>
+        <div id="selectedActions" class="flex flex-col gap-2">
+            </div>
+    </div>
 </div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
-import { getDatabase, ref, get, update, onValue, set } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import { getDatabase, ref, get, set, onValue, update } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-database.js";
+import { getAuth, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
 
+// Configuração do Firebase
 const firebaseConfig = {
   "apiKey": "AIzaSyDAQS7qpWTDH7itAgn1eAJIeLOfVxy__cM",
   "authDomain": "chat-firebase-efcbe.firebaseapp.com",
@@ -29,119 +71,194 @@ const firebaseConfig = {
   "projectId": "chat-firebase-efcbe",
   "storageBucket": "chat-firebase-efcbe.firebasestorage.app",
   "messagingSenderId": "376919463932",
-  "appId": "1:376919463932:web:4b2139df551d0a026ac479",
-  "measurementId": "G-R14XVTJBFL"
+  "appId": "1:376919463932:web:4b2100d024467d169d2d09"
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const auth = getAuth(app);
-const userListEl = document.getElementById('userList');
 
 const currentUserUid = localStorage.getItem('chat_user_uid');
-if(!currentUserUid) { location.href='index.html'; }
+const isAdmin = JSON.parse(localStorage.getItem('chat_is_admin') || 'false');
 
-// Função para verificar se o usuário é administrador
-async function checkAdmin(){
-    const isAdmin = await get(ref(db, `admins/${currentUserUid}`)).then(s => s.exists() && s.val() === true);
-    if(!isAdmin) {
-        alert('Acesso negado. Você não é um administrador.');
-        location.href='chat.html';
-        return false;
-    }
-    return true;
+if (!currentUserUid || !isAdmin) {
+    alert('Acesso negado.');
+    location.href = 'index.html';
 }
 
-function renderUser(uid, user, status){
-    const div = document.createElement('div');
-    div.className = 'p-3 bg-[#111318] rounded border border-gray-700';
-    
-    // Status
-    const statusText = status ? (status.state === 'online' ? '🟢 Online' : `🔴 Offline (${new Date(status.last_changed).toLocaleTimeString()})`) : '⚪ Desconhecido';
-    const blockedText = user.isBlocked ? ' (🤫 Silenciado)' : '';
-    const bannedText = user.isBanned ? ' (🔨 BANIDO)' : '';
+const totalUsersEl = document.getElementById('totalUsers');
+const onlineUsersEl = document.getElementById('onlineUsers');
+const totalMessagesEl = document.getElementById('totalMessages');
+const adminSearch = document.getElementById('adminSearch');
+const searchResults = document.getElementById('searchResults');
+const userCard = document.getElementById('userCard');
+const selectedUsernameEl = document.getElementById('selectedUsername');
+const selectedInfo = document.getElementById('selectedInfo');
+const selectedActions = document.getElementById('selectedActions');
+const btnListUsers = document.getElementById('btnListUsers');
+const btnRefresh = document.getElementById('btnRefresh');
 
-    let content = `
-        <div class="flex justify-between items-center mb-2">
-            <strong>${user.username || uid}</strong>
-            <span class="text-sm text-gray-400">${statusText}</span>
-        </div>
-        <div class="text-xs text-red-400 mb-3 break-all">UID: ${uid} ${blockedText} ${bannedText}</div>
-        <div class="flex gap-2 text-sm flex-wrap">
-            <button data-action="toggleBlock" data-uid="${uid}" data-isblocked="${user.isBlocked||false}" class="px-3 py-1 rounded ${user.isBlocked ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'}">
-                ${user.isBlocked ? 'Desbloquear Escrita' : 'Bloquear Escrita'}
-            </button>
-            <button data-action="toggleBan" data-uid="${uid}" data-isbanned="${user.isBanned||false}" class="px-3 py-1 rounded ${user.isBanned ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}">
-                ${user.isBanned ? 'Desbanir' : 'Banir Totalmente'}
-            </button>
-            <button data-action="forceLogout" data-uid="${uid}" class="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-700">
-                Forçar Logout
-            </button>
-        </div>
-    `;
-    div.innerHTML = content;
-    return div;
-}
+let usersSnapCache = {};
 
-async function loadUsers(){
-    userListEl.innerHTML = '';
-    const usersSnap = await get(ref(db, 'users'));
-    const statusSnap = await get(ref(db, 'status'));
-    
-    const users = usersSnap.exists() ? usersSnap.val() : {};
-    const statuses = statusSnap.exists() ? statusSnap.val() : {};
-    
-    const userKeys = Object.keys(users).filter(uid => uid !== currentUserUid && users[uid].username);
+const el = (tag, classes) => {
+    const element = document.createElement(tag);
+    if(classes) element.className = classes;
+    return element;
+};
 
-    if(userKeys.length === 0){
-        userListEl.innerHTML = '<div class="text-gray-400">Nenhum outro usuário encontrado.</div>';
-        return;
-    }
+// =========================================================================
+// FUNÇÕES DE ADMIN
+// =========================================================================
 
-    for(const uid of userKeys){
-        const userEl = renderUser(uid, users[uid], statuses[uid]);
-        userListEl.appendChild(userEl);
-    }
-    
-    // Adicionar listeners após a renderização
-    userListEl.querySelectorAll('button').forEach(button => {
-        button.addEventListener('click', handleAdminAction);
-    });
-}
-
-async function handleAdminAction(e){
-    const btn = e.target;
-    const uid = btn.dataset.uid;
-    const action = btn.dataset.action;
-
-    if(!confirm(`Tem certeza que deseja executar a ação: ${action} no usuário ${uid}?`)) return;
-
-    try{
-        if(action === 'toggleBlock'){
-            const isBlocked = btn.dataset.isblocked === 'true';
-            await update(ref(db, `users/${uid}`), { isBlocked: !isBlocked });
-        } else if(action === 'toggleBan'){
-            const isBanned = btn.dataset.isbanned === 'true';
-            await update(ref(db, `users/${uid}`), { isBanned: !isBanned });
-        } else if(action === 'forceLogout'){
-            await update(ref(db, `users/${uid}`), { forceLogoutAt: Date.now() });
-        }
+const updateDBStats = async () => {
+    try {
+        const usersSnap = await get(ref(db, 'users'));
+        totalUsersEl.textContent = usersSnap.exists() ? Object.keys(usersSnap.val()).length : 0;
         
-        loadUsers(); // Recarrega a lista
-    }catch(e){
-        alert('Erro ao executar ação administrativa: ' + e.message);
-        console.error(e);
-    }
-}
+        const statusSnap = await get(ref(db, 'status'));
+        if (statusSnap.exists()) {
+            const status = statusSnap.val();
+            const onlineCount = Object.values(status).filter(s => s.isOnline).length;
+            onlineUsersEl.textContent = onlineCount;
+        } else {
+            onlineUsersEl.textContent = 0;
+        }
 
-// Inicia o carregamento e monitora alterações de status (e implicitamente de users)
-(async function initAdmin(){
-    if(await checkAdmin()){
-        // Observa mudanças nos usuários e status para recarregar a lista
-        onValue(ref(db, 'users'), loadUsers);
-        onValue(ref(db, 'status'), loadUsers);
-    }
-})();
+        const messagesSnap = await get(ref(db, 'messages'));
+        totalMessagesEl.textContent = messagesSnap.exists() ? Object.keys(messagesSnap.val()).length : 0;
+    } catch (e) { console.error("Erro ao carregar stats:", e); }
+};
 
+const attachUsersListener = async () => {
+    searchResults.innerHTML = 'Carregando todos os usuários...';
+    try {
+        const snap = await get(ref(db, 'users'));
+        if (snap.exists()) {
+            usersSnapCache = snap.val();
+            searchResults.innerHTML = `Carregados ${Object.keys(usersSnapCache).length} perfis. Use a busca.`;
+        } else {
+            searchResults.innerHTML = 'Nenhum usuário encontrado.';
+        }
+    } catch (e) {
+        console.error("Erro ao carregar usuários:", e);
+        searchResults.innerHTML = 'Erro ao carregar a lista de usuários.';
+    }
+};
+
+const showUserDetails = (uid, user) => {
+    userCard.classList.remove('hidden');
+    selectedUsernameEl.textContent = user.username || uid;
+    selectedInfo.innerHTML = '';
+    selectedActions.innerHTML = '';
+
+    const isBanned = user.isBanned || false;
+    const isBlocked = user.isBlocked || false;
+
+    // Constrói o Status de Punição
+    let statusPunição = 'Nenhuma';
+    if (isBanned) statusPunição = '<span class="text-red-500">Banido Permanentemente</span>';
+    else if (isBlocked) statusPunição = '<span class="text-yellow-500">Silenciado</span>';
+
+    // Info
+    selectedInfo.appendChild(el('p')).innerHTML = `UID: <span class="opacity-70">${uid}</span>`;
+    selectedInfo.appendChild(el('p')).innerHTML = `Nome: <span class="opacity-70">${user.username}</span>`;
+    selectedInfo.appendChild(el('p')).innerHTML = `Membro desde: <span class="opacity-70">${new Date(user.createdAt).toLocaleDateString()}</span>`;
+    selectedInfo.appendChild(el('p')).innerHTML = `Última Atividade: <span class="opacity-70">${user.lastSeen ? new Date(user.lastSeen).toLocaleString() : 'N/A'}</span>`;
+    selectedInfo.appendChild(el('p')).innerHTML = `**Punição:** ${statusPunição}`;
+    
+    // Ações
+    const banBtn = el('button', `btn ${isBanned ? 'success' : 'danger'}`);
+    banBtn.textContent = isBanned ? 'Remover Ban' : 'Banir Permanentemente';
+    banBtn.onclick = async () => {
+        const newStatus = !isBanned;
+        await update(ref(db, `users/${uid}`), { isBanned: newStatus, isBlocked: newStatus ? false : isBlocked }); // Ban remove silêncio
+        showUserDetails(uid, { ...user, isBanned: newStatus, isBlocked: newStatus ? false : isBlocked });
+    };
+
+    const muteBtn = el('button', `btn ${isBlocked ? 'success' : 'danger'}`);
+    muteBtn.textContent = isBlocked ? 'Remover Silêncio' : 'Silenciar (Bloquear Chat)';
+    muteBtn.onclick = async () => {
+        const newStatus = !isBlocked;
+        await update(ref(db, `users/${uid}`), { isBlocked: newStatus });
+        showUserDetails(uid, { ...user, isBlocked: newStatus });
+    };
+
+    const kickBtn = el('button', 'btn muted');
+    kickBtn.textContent = 'Deslogar Forçadamente';
+    kickBtn.onclick = async () => {
+        if(confirm(`Tem certeza que deseja deslogar ${user.username}?`)){
+            // Usamos Date.now() para forçar o chat.html a reconhecer a mudança
+            await update(ref(db, `users/${uid}`), { forceLogoutAt: Date.now() });
+            alert('Usuário deslogado forçadamente.');
+        }
+    };
+    
+    // Dump data button
+    const dumpBtn = el('button', 'btn muted');
+    dumpBtn.textContent = 'Ver Dados Brutos';
+    dumpBtn.onclick = async () => {
+        const list = { uid, ...user };
+        selectedInfo.appendChild(el('h4','text-sm mt-3')); // spacing
+        const out = el('pre', 'text-xs whitespace-pre-wrap'); 
+        out.textContent = JSON.stringify(list, null, 2);
+        selectedInfo.appendChild(out);
+    };
+
+    selectedActions.appendChild(banBtn);
+    selectedActions.appendChild(muteBtn);
+    selectedActions.appendChild(kickBtn);
+    selectedActions.appendChild(dumpBtn);
+};
+
+// search
+adminSearch.addEventListener('input', async (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  searchResults.innerHTML = '';
+  if(!q) return;
+
+  const foundUids = new Set(); // USAMOS UM SET PARA GARANTIR UNICIDADE (CORREÇÃO DE BUG)
+
+  // Busca por UID e Username
+  for(const uid in usersSnapCache){
+    const u = usersSnapCache[uid];
+    
+    // Constrói o status de punição (Banido/Silenciado)
+    let statusText = '';
+    if(u.isBanned) {
+      statusText = ' (BANIDO PERMANENTEMENTE)';
+    } else if(u.isBlocked) {
+      statusText = ' (SILENCIADO)';
+    }
+
+    if((u.username && u.username.toLowerCase().includes(q)) || uid.includes(q)){
+      if (foundUids.has(uid)) continue; // Evita duplicação
+
+      const row = el('div','table-row cursor-pointer hover:bg-gray-700/20 transition-colors');
+      row.textContent = `${u.username || uid}${statusText} — ${uid}`;
+      row.onclick = ()=> showUserDetails(uid, u);
+      searchResults.appendChild(row);
+      foundUids.add(uid);
+    }
+  }
+});
+
+// misc buttons
+btnListUsers.onclick = ()=> attachUsersListener();
+btnRefresh.onclick = ()=> updateDBStats();
+logout.onclick = async (e)=> { e.preventDefault(); try{ await signOut(auth); localStorage.clear(); location.href = 'index.html'; }catch(e){ console.warn(e); } };
+
+// watch typing flags (to show if any user typing in rooms)
+onValue(ref(db,'typing'), snap=>{
+  // compute if any typing globally (for admin info)
+  const typingStatus = document.getElementById('typingStatusAdmin');
+  if(!typingStatus) return;
+  const rooms = snap.val() || {};
+  const globalTyping = rooms['global'] || {};
+  const count = Object.keys(globalTyping).length;
+  // Apenas uma informação simples para o painel de admin
+  typingStatus.textContent = count > 0 ? `${count} usuário(s) digitando.` : 'Ninguém digitando.';
+});
+
+updateDBStats();
 </script>
 </body>
 </html>
